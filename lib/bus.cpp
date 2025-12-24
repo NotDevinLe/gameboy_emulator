@@ -55,3 +55,8 @@ void bus_write(uint16_t addr, uint8_t val) {
         return;
     }
 }
+
+void bus_write16(uint16_t addr, uint16_t val) {
+    bus_write(addr, static_cast<uint8_t>(val >> 8));
+    bus_write(addr + 1, static_cast<uint8_t>(val & 0xFF));
+}
