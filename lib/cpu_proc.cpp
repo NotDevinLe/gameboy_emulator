@@ -58,9 +58,48 @@ void execute_ld(Instruction inst) {
 void execute_inc(Instruction inst) {
     switch (inst.addr_mode) {
         case addr_mode::REG16: {
+            uint16_t reg_value = read_reg16(inst.reg_1);
+            uint16_t result = reg_value + 1;
+            write_reg16(inst.reg_1, result);
             break;
         }
         case addr_mode::REG8: {
+            uint8_t reg_value = read_reg8(inst.reg_1);
+            uint8_t result = reg_value + 1;
+            write_reg8(inst.reg_1, result);
+
+            uint8_t f = read_reg8(reg_type::F);
+            f &= ~FLAG_N;
+
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            if (is_half_carry_add(reg_value, 1)) {
+                f |= FLAG_H;
+            }
+
+            write_reg8(reg_type::F, f);
+            break;
+        }
+        case addr_mode::MEM_REG16: {
+            uint16_t addr = read_reg16(inst.reg_1);
+            uint8_t value = bus_read(addr);
+            uint8_t result = value + 1;
+            bus_write(addr, result);
+
+            uint8_t f = read_reg8(reg_type::F);
+            f |= FLAG_N;
+            
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            if (is_half_carry_add(value, 1)) {
+                f |= FLAG_H;
+            }
+
+            write_reg8(reg_type::F, f);
             break;
         }
         default: {
@@ -121,10 +160,59 @@ void execute_sub(Instruction inst) {
     }
 }
 
-void execute_rlca(Instruction);
-void execute_rrca(Instruction);
-void execute_rla(Instruction);
-void execute_rra(Instruction);
+void execute_rlca(Instruction) {
+    uint8_t a = cpu.A;
+    uint8_t c = (a >> 7) & 1;
+
+    cpu.A = (a << 1) | c;
+
+    cpu.F = 0;
+
+    if (c) {
+        cpu.F |= FLAG_C;
+    }
+}
+
+void execute_rrca(Instruction) {
+    uint8_t a = cpu.A;
+    uint8_t c = a & 1;
+
+    cpu.A = (a >> 1) | (c << 7);
+
+    cpu.F = 0;
+
+    if (c) {
+        cpu.F |= FLAG_C;
+    }
+}
+
+void execute_rla(Instruction) {
+    uint8_t a = cpu.A;
+    uint8_t old_c = cpu.F & FLAG_C;
+    uint8_t new_c = (a >> 7) & 1;
+
+    cpu.A = (a << 1) | old_c;
+
+    cpu.F = 0;
+
+    if (new_c) {
+        cpu.F |= FLAG_C;
+    }
+}
+
+void execute_rra(Instruction) {
+    uint8_t a = cpu.A;
+    uint8_t old_c = (cpu.F & FLAG_C) ? 1 : 0;
+    uint8_t new_c = a & 1;
+
+    cpu.A = (a >> 1) | (old_c << 7);
+
+    cpu.F = 0;
+
+    if (new_c) {
+        cpu.F |= FLAG_C;
+    }
+}
 
 // Flags
 void execute_daa(Instruction);
