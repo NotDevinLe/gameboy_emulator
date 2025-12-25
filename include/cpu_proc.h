@@ -1,3 +1,7 @@
+#pragma once
+
+#include "cpu_instructions.h"
+
 // Core
 void execute_nop(Instruction);
 void execute_ld(Instruction);
@@ -56,6 +60,6 @@ void execute_sla(Instruction);
 void execute_sra(Instruction);
 void execute_swap(Instruction);
 void execute_srl(Instruction);
-void execute_bit(Instruction);
-void execute_res(Instruction);
-void execute_set(Instruction);
+void execute_bit(const Instruction& inst, uint8_t bit_to_check);
+void execute_res(const Instruction& inst, uint8_t bit);
+void execute_set(const Instruction& inst, uint8_t bit);

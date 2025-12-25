@@ -1,21 +1,22 @@
 #include "cpu.h"
-#include "cpu_instructions.cpp"
+#include "cpu_instructions.h"
+#include "cpu_proc.h"
 #include "bus.h"
 #include <cstdio>
 #include <cstdint>
 
-struct cpu_state {
-    uint8_t A, F, B, C, D, E, H, L;
-    uint16_t PC, SP;
-    bool ime, halt, stop;
+cpu_state cpu;
+
+enum class cb_target : uint8_t {
+    B = 0,
+    C = 1,
+    D = 2,
+    E = 3,
+    H = 4,
+    L = 5,
+    HL = 6,
+    A = 7
 };
-
-static cpu_state cpu;
-
-constexpr uint8_t FLAG_Z = 0x80; // Zero
-constexpr uint8_t FLAG_N = 0x40; // Subtract
-constexpr uint8_t FLAG_H = 0x20; // Half-carry
-constexpr uint8_t FLAG_C = 0x10; // Carry
 
 void cpu_init() {
     cpu.A = 0;
@@ -51,7 +52,11 @@ bool cpu_step() {
 
     Instruction inst = decode(op, is_cb);
 
-    switch (inst.in_type) {
+    switch (inst.type) {
+        case in_type::IN_NOP: {
+            execute_nop(inst);
+            break;
+        }
         case in_type::IN_LD: {
             execute_ld(inst);
             break;
@@ -130,6 +135,7 @@ bool cpu_step() {
         }
         case in_type::IN_XOR: {
             execute_xor(inst);
+            break;
         }
         case in_type::IN_OR: {
             execute_or(inst);
@@ -212,19 +218,22 @@ bool cpu_step() {
             break;
         }
         case in_type::IN_BIT: {
-            execute_bit(inst);
+            uint8_t bit_to_check = (op >> 3) & 0x07;
+            execute_bit(inst, bit_to_check);
             break;
         }
         case in_type::IN_RES: {
-            execute_res(inst);
+            uint8_t bit_to_clear = (op >> 3) & 0x07;
+            execute_res(inst, bit_to_clear);
             break;
         }
         case in_type::IN_SET: {
-            execute_set(inst);
+            uint8_t bit_to_set = (op >> 3) & 0x07;
+            execute_set(inst, bit_to_set);
             break;
         }
         default: {
-            std::printf("Unknown instruction: %02X\n", inst.in_type);
+            std::printf("Unknown instruction: %d\n", static_cast<int>(inst.type));
             break;
         }
     }
