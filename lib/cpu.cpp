@@ -7,7 +7,7 @@
 struct cpu_state {
     uint8_t A, F, B, C, D, E, H, L;
     uint16_t PC, SP;
-    bool ime, halt;
+    bool ime, halt, stop;
 };
 
 static cpu_state cpu;
@@ -32,6 +32,7 @@ void cpu_init() {
 
     cpu.ime = false;
     cpu.halt = false;
+    cpu.stop = false;
 }
 
 bool cpu_step() {

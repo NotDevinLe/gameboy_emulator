@@ -157,6 +157,7 @@ void execute_dec(Instruction inst) {
         default: {
             std::printf("Unknown address mode: %d\n", inst.addr_mode);
             break;
+            }
         }
     }
 }
@@ -456,7 +457,6 @@ void execute_ccf(Instruction) {
     write_reg8(reg_type::F, z | c);
 }
 
-// Control flow
 void execute_jr(Instruction) {
     int8_t offset = fetch8();
     switch (inst.cond) {
@@ -588,18 +588,134 @@ void execute_ret(Instruction) {
     cpu.PC = ret_addr;
 }
 
-void execute_reti(Instruction);
-void execute_rst(Instruction);
+void execute_reti(Instruction) {
+    uint16_t ret_addr = bus_read16(cpu.SP);
+    cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
+    cpu.PC = ret_addr;
+    cpu.ime = true;
+}
 
-// Stack
-void execute_push(Instruction);
-void execute_pop(Instruction);
+void execute_rst(Instruction) {
+    uint8_t rst_vec = inst.param;
+    uint16_t ret_addr = cpu.PC;
+    bus_write16(cpu.SP - 2, ret_addr);
+    cpu.SP = static_cast<uint16_t>(cpu.SP - 2);
+    cpu.PC = rst_vec;
+}
 
-// CPU state
-void execute_halt(Instruction);
-void execute_stop(Instruction);
-void execute_di(Instruction);
-void execute_ei(Instruction);
+void execute_push(Instruction) {
+    uint16_t reg_value = read_reg16(inst.reg_1);
+    bus_write16(cpu.SP - 2, reg_value);
+    cpu.SP = static_cast<uint16_t>(cpu.SP - 2);
+}
 
-// CB-prefixed
-void execute_cb(uint8_t cb_opcode);
+void execute_pop(Instruction) {
+    uint16_t reg_value = bus_read16(cpu.SP);
+    cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
+    write_reg16(inst.reg_1, reg_value);
+}
+
+void execute_halt(Instruction) {
+    cpu.halt = true;
+}
+void execute_stop(Instruction) {
+    cpu.stop = true;
+}
+void execute_di(Instruction) {
+    cpu.ime = false;
+}
+void execute_ei(Instruction) {
+    cpu.ime = true;
+}
+
+void execute_rlc(Instruction) {
+    switch (inst.addr_mode) {
+        case addr_mode::REG8: {
+            uint8_t a = read_reg8(inst.reg_1);
+            uint8_t c = (a >> 7) & 1;
+            uint8_t result = (a << 1) | c;
+            write_reg8(inst.reg_1, result);
+            uint8_t f = 0;
+
+            if (c) {
+                f |= FLAG_C;
+            }
+
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            write_reg8(reg_type::F, f);
+            break;
+        }
+        case addr_mode::MEM_REG16: {
+            uint16_t addr = read_reg16(inst.reg_1);
+            uint8_t value = bus_read(addr);
+            uint8_t c = (value >> 7) & 1;
+            uint8_t result = (value << 1) | c;
+            bus_write(addr, result);
+            uint8_t f = 0;
+
+            if (c) {
+                f |= FLAG_C;
+            }
+
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            write_reg8(reg_type::F, f);
+            break;
+        }
+        default: {
+            std::printf("Unknown address mode: %d\n", inst.addr_mode);
+            break;
+        }
+    }
+}
+
+void execute_rrc(Instruction) {
+    switch (inst.addr_mode) {
+        case addr_mode::REG8: {
+            uint8_t a = read_reg8(inst.reg_1);
+            uint8_t c = a & 1;
+            uint8_t result = (a >> 1) | (c << 7);
+            write_reg8(inst.reg_1, result);
+            uint8_t f = 0;
+
+            if (c) {
+                f |= FLAG_C;
+            }
+
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            write_reg8(reg_type::F, f);
+            break;
+        }
+        case addr_mode::MEM_REG16: {
+            uint16_t addr = read_reg16(inst.reg_1);
+            uint8_t value = bus_read(addr);
+            uint8_t c = value & 1;
+            uint8_t result = (value >> 1) | (c << 7);
+            bus_write(addr, result);
+            uint8_t f = 0;
+
+            if (c) {
+                f |= FLAG_C;
+            }
+
+            if (result == 0) {
+                f |= FLAG_Z;
+            }
+
+            write_reg8(reg_type::F, f);
+            break;
+        }
+        default: {
+            std::printf("Unknown address mode: %d\n", inst.addr_mode);
+            break;
+        }
+    }
+}

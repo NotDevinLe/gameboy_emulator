@@ -48,4 +48,14 @@ void execute_di(Instruction);
 void execute_ei(Instruction);
 
 // CB-prefixed
-void execute_cb(uint8_t cb_opcode);
+void execute_rlc(Instruction);
+void execute_rrc(Instruction);
+void execute_rl(Instruction);
+void execute_rr(Instruction);
+void execute_sla(Instruction);
+void execute_sra(Instruction);
+void execute_swap(Instruction);
+void execute_srl(Instruction);
+void execute_bit(Instruction);
+void execute_res(Instruction);
+void execute_set(Instruction);
