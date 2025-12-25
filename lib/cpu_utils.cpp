@@ -54,6 +54,7 @@ static uint8_t fetch8() {
 static uint16_t fetch16() {
     uint8_t lo = fetch8();
     uint8_t hi = fetch8();
+    cpu.PC = static_cast<uint16_t>(cpu.PC + 2);
     return (static_cast<uint16_t>(hi) << 8) | static_cast<uint16_t>(lo);
 }
 
