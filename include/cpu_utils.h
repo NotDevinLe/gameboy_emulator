@@ -21,3 +21,7 @@ bool is_carry_add(uint8_t a, uint8_t b);
 bool is_half_carry_add(uint8_t a, uint8_t b);
 bool is_carry_sub(uint8_t a, uint8_t b);
 bool is_half_carry_sub(uint8_t a, uint8_t b);
+
+// 16-bit variants used for operations like ADD HL,rr.
+bool is_carry_add16(uint16_t a, uint16_t b);
+bool is_half_carry_add16_12(uint16_t a, uint16_t b);

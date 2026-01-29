@@ -2,6 +2,7 @@
 #include "cart.h"
 #include "cpu.h"
 #include <cstdio>
+#include "ram.h"
 
 int main(int argc, char** argv) {
     const char* path = (argc >= 2) ? argv[1] : "roms/pokemon_red.gb";
@@ -12,9 +13,14 @@ int main(int argc, char** argv) {
     }
 
     cpu_init();
+    ram_init();
 
+    int step_count = 0;
     while (cpu_step()) {
-        // later you will advance timers/PPU based on cycles
+        // step_count++;
+        // if (step_count > 100) {
+        //     break;
+        // }
     }
 
     return 0;

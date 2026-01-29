@@ -5,6 +5,9 @@ struct cpu_state {
     uint8_t A, F, B, C, D, E, H, L;
     uint16_t PC, SP;
     bool ime, halt, stop;
+    // Monotonic instruction counter (increments once per executed instruction).
+    // Used for lightweight timing approximations (e.g., LY).
+    uint64_t instr_count;
 };
 
 extern cpu_state cpu;

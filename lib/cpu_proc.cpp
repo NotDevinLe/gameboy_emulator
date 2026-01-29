@@ -5,6 +5,8 @@
 #include "bus.h"
 #include <cstdint>
 #include <cstdio>
+#include <unordered_map>
+#include "stack.h"
 
 void execute_nop(Instruction) {
     // NOP does nothing
@@ -37,16 +39,23 @@ void execute_ld(Instruction inst) {
             break;
         }
         case addr_mode::REG16_SP_IMM8: {
-            uint16_t reg_value = read_reg16(inst.reg_2);
-            uint8_t imm = fetch8();
-            uint16_t result = reg_value + imm;
+            // LD HL,SP+e8 (opcode 0xF8):
+            // e8 is a signed 8-bit immediate. Result is stored in HL.
+            // Flags: Z=0, N=0, H/C from low-byte addition of SP and e8.
+            uint16_t sp = read_reg16(inst.reg_2); // SP
+            int8_t offset = static_cast<int8_t>(fetch8());
+            uint16_t result = static_cast<uint16_t>(static_cast<int32_t>(sp) + static_cast<int32_t>(offset));
+
             cpu.F = 0;
-            if (is_carry_add(reg_value, imm)) {
-                cpu.F |= FLAG_C;
-            }
-            if (is_half_carry_add(reg_value, imm)) {
+            uint8_t sp_lo = static_cast<uint8_t>(sp & 0x00FF);
+            uint8_t off_u = static_cast<uint8_t>(offset);
+            if (((sp_lo & 0x0F) + (off_u & 0x0F)) > 0x0F) {
                 cpu.F |= FLAG_H;
             }
+            if (static_cast<uint16_t>(sp_lo) + static_cast<uint16_t>(off_u) > 0xFF) {
+                cpu.F |= FLAG_C;
+            }
+
             write_reg16(inst.reg_1, result);
             break;
         }
@@ -92,7 +101,8 @@ void execute_ld(Instruction inst) {
         case addr_mode::REG8_MEM_FF00_IMM8: {
             uint8_t imm = fetch8();
             uint16_t addr = static_cast<uint16_t>(0xFF00 + imm);
-            write_reg8(inst.reg_1, bus_read(addr));
+            uint8_t value = bus_read(addr);
+            write_reg8(inst.reg_1, value);
             break;
         }
         case addr_mode::MEM_FF00_C_REG8: {
@@ -133,18 +143,24 @@ void execute_inc(Instruction inst) {
         }
         case addr_mode::REG8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
-            uint8_t result = reg_value + 1;
+            uint8_t result = static_cast<uint8_t>(reg_value + 1);
             write_reg8(inst.reg_1, result);
 
-            cpu.F &= ~FLAG_N;
-
+            // INC r: Z set if result == 0, N reset, H from bit 3 carry, C preserved
+            uint8_t f = cpu.F & FLAG_C; // preserve carry only
             if (result == 0) {
-                cpu.F |= FLAG_Z;
+                f |= FLAG_Z;
+            } else {
+                // Explicitly clear Z if result != 0
+                f &= ~FLAG_Z;
             }
-
             if (is_half_carry_add(reg_value, 1)) {
-                cpu.F |= FLAG_H;
+                f |= FLAG_H;
+            } else {
+                f &= ~FLAG_H;
             }
+            // N is 0 for INC (already clear from f &= FLAG_C above)
+            cpu.F = f;
             break;
         }
         case addr_mode::MEM_REG16: {
@@ -153,15 +169,15 @@ void execute_inc(Instruction inst) {
             uint8_t result = value + 1;
             bus_write(addr, result);
 
-            cpu.F &= ~FLAG_N;
-
+            // INC (HL): same flags as INC r
+            uint8_t f = cpu.F & FLAG_C; // preserve carry only
             if (result == 0) {
-                cpu.F |= FLAG_Z;
+                f |= FLAG_Z;
             }
-
             if (is_half_carry_add(value, 1)) {
-                cpu.F |= FLAG_H;
+                f |= FLAG_H;
             }
+            cpu.F = f;
             break;
         }
         default: {
@@ -181,22 +197,24 @@ void execute_dec(Instruction inst) {
         }
         case addr_mode::REG8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
-            uint8_t result = reg_value - 1;
+            uint8_t result = static_cast<uint8_t>(reg_value - 1);
 
-            uint8_t f = cpu.F;
-
+            // DEC r: Z set if result == 0, N set, H from borrow on bit 4, C preserved
+            uint8_t f = cpu.F & FLAG_C; // preserve carry only
             if (result == 0) {
                 f |= FLAG_Z;
+            } else {
+                f &= ~FLAG_Z; // Explicitly clear Z if result != 0
             }
-
             if (is_half_carry_sub(reg_value, 1)) {
                 f |= FLAG_H;
+            } else {
+                f &= ~FLAG_H; // Explicitly clear H if no half-carry
             }
-
             f |= FLAG_N;
-
             cpu.F = f;
             write_reg8(inst.reg_1, result);
+            
             break;
         }
         case addr_mode::MEM_REG16: {
@@ -205,17 +223,15 @@ void execute_dec(Instruction inst) {
             uint8_t result = value - 1;
             bus_write(addr, result);
 
-            uint8_t f = cpu.F;
-            f |= FLAG_N;
-
+            // DEC (HL): same flags as DEC r
+            uint8_t f = cpu.F & FLAG_C; // preserve carry only
             if (result == 0) {
                 f |= FLAG_Z;
             }
-
             if (is_half_carry_sub(value, 1)) {
                 f |= FLAG_H;
             }
-
+            f |= FLAG_N;
             cpu.F = f;
             break;
         }
@@ -234,17 +250,38 @@ void execute_add(Instruction inst) {
             uint16_t result = reg_value_1 + reg_value_2;
             write_reg16(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
+            // ADD HL,rr: N reset, H from bit 11 carry, C from bit 15 carry, Z unaffected
+            uint8_t f = cpu.F & FLAG_Z; // preserve Z only
             f &= ~FLAG_N;
-
-            if (is_carry_add(reg_value_1, reg_value_2)) {
-                f |= FLAG_C;
-            }
-            if (is_half_carry_add(reg_value_1, reg_value_2)) {
+            if (is_half_carry_add16_12(reg_value_1, reg_value_2)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_add16(reg_value_1, reg_value_2)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
+            break;
+        }
+        case addr_mode::REG16_IMM8: {
+            // This mode is used for ADD SP, r8 (opcode 0xE8).
+            // r8 is a signed immediate; flags are computed from the low byte addition:
+            // Z=0, N=0, H/C from carries out of bit 3/7 of the low byte.
+            //
+            // Note: LD HL,SP+e8 (opcode 0xF8) is handled separately in execute_ld (REG16_SP_IMM8).
+            int8_t imm = static_cast<int8_t>(fetch8());
+            uint16_t sp = read_reg16(inst.reg_1); // expected SP
+            uint16_t result = static_cast<uint16_t>(static_cast<int32_t>(sp) + static_cast<int32_t>(imm));
+
+            cpu.F = 0;
+            uint16_t uimm = static_cast<uint16_t>(static_cast<int16_t>(imm)) & 0x00FF;
+            if (((sp & 0x000F) + (uimm & 0x000F)) > 0x000F) {
+                cpu.F |= FLAG_H;
+            }
+            if (((sp & 0x00FF) + (uimm & 0x00FF)) > 0x00FF) {
+                cpu.F |= FLAG_C;
+            }
+
+            write_reg16(inst.reg_1, result);
             break;
         }
         case addr_mode::REG8_REG8: {
@@ -253,20 +290,17 @@ void execute_add(Instruction inst) {
             uint8_t result = reg_value_1 + reg_value_2;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f &= ~FLAG_N;
-
+            // 8-bit ADD: Z from result, N reset, H/C from carry, other flags cleared
+            uint8_t f = 0;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_add(reg_value_1, reg_value_2)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_add(reg_value_1, reg_value_2)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_add(reg_value_1, reg_value_2)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -277,20 +311,16 @@ void execute_add(Instruction inst) {
             uint8_t result = reg_value + value;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f &= ~FLAG_N;
-
+            uint8_t f = 0;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_add(reg_value, value)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_add(reg_value, value)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_add(reg_value, value)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -300,20 +330,16 @@ void execute_add(Instruction inst) {
             uint8_t result = reg_value + imm;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f &= ~FLAG_N;
-
+            uint8_t f = 0;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_add(reg_value, imm)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_add(reg_value, imm)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_add(reg_value, imm)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -332,20 +358,17 @@ void execute_sub(Instruction inst) {
             uint8_t result = reg_value_1 - reg_value_2;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f |= FLAG_N;
-
+            // 8-bit SUB: Z from result, N set, H/C from borrow, all from scratch
+            uint8_t f = FLAG_N;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_sub(reg_value_1, reg_value_2)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_sub(reg_value_1, reg_value_2)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_sub(reg_value_1, reg_value_2)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -355,20 +378,16 @@ void execute_sub(Instruction inst) {
             uint8_t result = reg_value - imm;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f &= ~FLAG_N;
-
+            uint8_t f = FLAG_N;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_sub(reg_value, imm)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_sub(reg_value, imm)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_sub(reg_value, imm)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -379,20 +398,16 @@ void execute_sub(Instruction inst) {
             uint8_t result = reg_value - value;
             write_reg8(inst.reg_1, result);
 
-            uint8_t f = cpu.F;
-            f &= ~FLAG_N;
-            
+            uint8_t f = FLAG_N;
             if (result == 0) {
                 f |= FLAG_Z;
-            }
-
-            if (is_carry_sub(reg_value, value)) {
-                f |= FLAG_C;
             }
             if (is_half_carry_sub(reg_value, value)) {
                 f |= FLAG_H;
             }
-
+            if (is_carry_sub(reg_value, value)) {
+                f |= FLAG_C;
+            }
             cpu.F = f;
             break;
         }
@@ -648,14 +663,15 @@ void execute_cpl(Instruction) {
 }
 
 void execute_scf(Instruction) {
-    cpu.F &= FLAG_Z;
-    cpu.F |= FLAG_C;
+    // SCF: Clear N and H, preserve Z, set C
+    uint8_t z = cpu.F & FLAG_Z;
+    cpu.F = z | FLAG_C;
 }
 
 void execute_ccf(Instruction) {
+    // CCF: Clear N and H, preserve Z, toggle C
     uint8_t z = cpu.F & FLAG_Z;
     uint8_t c = (~cpu.F) & FLAG_C;
-
     cpu.F = z | c;
 }
 
@@ -703,7 +719,7 @@ void execute_jp(Instruction inst) {
     if (inst.mode == addr_mode::REG16) {
         // JP (HL) - unconditional jump to address in HL
         uint16_t addr = read_reg16(inst.reg_1);
-        std::printf("JP (HL): jumping to %04X (HL=%04X)\n", addr, read_reg16(reg_type::HL));
+        // std::printf("JP (HL): jumping to %04X (HL=%04X)\n", addr, read_reg16(reg_type::HL));
         cpu.PC = addr;
         return;
     }
@@ -763,7 +779,7 @@ void execute_call(Instruction inst) {
         uint16_t ret_addr = cpu.PC;
         cpu.SP = static_cast<uint16_t>(cpu.SP - 2);
         bus_write16(cpu.SP, ret_addr);
-        std::printf("CALL: jumping to %04X, return addr %04X, SP=%04X\n", addr, ret_addr, cpu.SP);
+        // std::printf("CALL: jumping to %04X, return addr %04X, SP=%04X\n", addr, ret_addr, cpu.SP);
         cpu.PC = addr;
     }
 }
@@ -793,7 +809,7 @@ void execute_ret(Instruction inst) {
     
     if (should_ret) {
         uint16_t ret_addr = bus_read16(cpu.SP);
-        std::printf("RET: returning to %04X from SP=%04X\n", ret_addr, cpu.SP);
+        // std::printf("RET: returning to %04X from SP=%04X\n", ret_addr, cpu.SP);
         cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
         cpu.PC = ret_addr;
     }
@@ -816,13 +832,11 @@ void execute_rst(Instruction inst) {
 
 void execute_push(Instruction inst) {
     uint16_t reg_value = read_reg16(inst.reg_1);
-    cpu.SP = static_cast<uint16_t>(cpu.SP - 2);
-    bus_write16(cpu.SP, reg_value);
+    stack_push(reg_value);
 }
 
 void execute_pop(Instruction inst) {
-    uint16_t reg_value = bus_read16(cpu.SP);
-    cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
+    uint16_t reg_value = stack_pop();
     write_reg16(inst.reg_1, reg_value);
 }
 

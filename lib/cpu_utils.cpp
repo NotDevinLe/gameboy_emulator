@@ -87,3 +87,12 @@ bool is_carry_sub(uint8_t a, uint8_t b) {
 bool is_half_carry_sub(uint8_t a, uint8_t b) {
     return (a & 0x0F) < (b & 0x0F);
 }
+
+// 16-bit helpers for operations like ADD HL,rr.
+bool is_carry_add16(uint16_t a, uint16_t b) {
+    return static_cast<uint32_t>(a) + static_cast<uint32_t>(b) > 0xFFFFu;
+}
+
+bool is_half_carry_add16_12(uint16_t a, uint16_t b) {
+    return ((a & 0x0FFFu) + (b & 0x0FFFu)) > 0x0FFFu;
+}

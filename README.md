@@ -15,3 +15,5 @@ main.cpp - takes in a ROM and runs the cpu.
 bus.cpp - handles the memory read and writes throughout the emulator.
 
 cart.cpp - loads in a cartridge and gets the ROM data.
+
+For the memory bank controller I only implement mbc1 and rom only since most games only utilize that. Eventually will implement mbc5 for support of pokemon.

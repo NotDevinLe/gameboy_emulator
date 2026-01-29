@@ -2,8 +2,12 @@
 #include "cpu_instructions.h"
 #include "cpu_proc.h"
 #include "bus.h"
+#include "interrupt.h"
 #include <cstdio>
 #include <cstdint>
+#include <unordered_map>
+#include <fstream>
+#include <iomanip>
 
 cpu_state cpu;
 
@@ -19,29 +23,62 @@ enum class cb_target : uint8_t {
 };
 
 void cpu_init() {
-    cpu.A = 0;
-    cpu.F = 0;
-    cpu.B = 0;
-    cpu.C = 0;
-    cpu.D = 0;
-    cpu.E = 0;
-    cpu.H = 0;
-    cpu.L = 0;
-
-    cpu.SP = 0xFFFE;
+    // Standard "DMG" (Original Game Boy) Post-Boot State
     cpu.PC = 0x0100;
+    cpu.SP = 0xFFFE;
+    
+    // AF = 0x01B0 (A=01, F=B0: Z=1, N=0, H=1, C=0)
+    cpu.A = 0x01;
+    cpu.F = 0xB0;
+    
+    // BC = 0x0013
+    cpu.B = 0x00;
+    cpu.C = 0x13;
+    
+    // DE = 0x00D8
+    cpu.D = 0x00;
+    cpu.E = 0xD8;
+    
+    // HL = 0x014D (Points to the Nintendo Logo checksum)
+    cpu.H = 0x01;
+    cpu.L = 0x4D;
 
     cpu.ime = false;
     cpu.halt = false;
     cpu.stop = false;
+    cpu.instr_count = 0;
 }
 
 bool cpu_step() {
+    cpu_handle_interrupts(&cpu);
+
+    // Count instructions for lightweight timing approximations.
+    cpu.instr_count++;
+
     uint16_t pc_before = cpu.PC;
     uint8_t op = bus_read(cpu.PC);
     cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
-    std::printf("PC=%04X OP=%02X\n", pc_before, op);
-
+    
+    // Log at most the first 10,000 instructions to out_ours.log
+    static int log_count = 0;
+    static std::ofstream log_file("out_ours.txt", std::ios::trunc);
+    if (log_count < 100000 && log_file.is_open()) {
+        log_file << std::hex << std::uppercase << std::setfill('0');
+        log_file << "PC=" << std::setw(4) << pc_before << " OP=" << std::setw(2) << static_cast<int>(op);
+        if (op == 0xCB) {
+            uint8_t cb_op = bus_read(cpu.PC);
+            log_file << " CB=" << std::setw(2) << static_cast<int>(cb_op);
+        }
+        log_file << " AF=" << std::setw(4) << ((static_cast<int>(cpu.A) << 8) | cpu.F)
+                 << " BC=" << std::setw(4) << ((static_cast<int>(cpu.B) << 8) | cpu.C)
+                 << " DE=" << std::setw(4) << ((static_cast<int>(cpu.D) << 8) | cpu.E)
+                 << " HL=" << std::setw(4) << ((static_cast<int>(cpu.H) << 8) | cpu.L)
+                 << " SP=" << std::setw(4) << cpu.SP;
+        log_file << std::dec << "\n";
+        log_file.flush();
+        ++log_count;
+    }
+ 
     bool is_cb = false;
 
     if (op == 0xCB) {
@@ -49,6 +86,8 @@ bool cpu_step() {
         op = bus_read(cpu.PC);
         cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
     }
+
+    // std::printf("OP: %02X\n", op);
 
     Instruction inst = decode(op, is_cb);
 

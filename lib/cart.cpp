@@ -12,6 +12,15 @@ typedef struct {
     uint32_t rom_size;
     std::vector<uint8_t> rom_data;
     const rom_header* header;
+
+    bool battery;
+    bool need_save;
+
+    // MBC1 registers
+    bool ram_enabled;
+    uint8_t rom_bank_number;
+    uint8_t ram_bank_number;
+    uint8_t mode;
 } cart_context;
 
 static cart_context ctx;
@@ -176,4 +185,19 @@ uint8_t cart_read(uint16_t address) {
 
 void cart_write(uint16_t address, uint8_t value) {
     
+}
+
+uint8_t cart_ram_read(uint16_t address) {
+    switch (ctx.header->type) {
+        case 0x00: { // rom only
+            return 0xFF;
+        }
+        case 0x01: { // mbc1
+            
+        }
+    }
+}
+
+void cart_ram_write(uint16_t address, uint8_t value) {
+
 }
