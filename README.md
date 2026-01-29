@@ -17,3 +17,5 @@ bus.cpp - handles the memory read and writes throughout the emulator.
 cart.cpp - loads in a cartridge and gets the ROM data.
 
 For the memory bank controller I only implement mbc1 and rom only since most games only utilize that. Eventually will implement mbc5 for support of pokemon.
+
+Jan 29 - All functionality for the Blargg's CPU test should be implemented now. However, there are some weird bugs that are causing it to loop infinitely. Created automated logging of opcode and register values and compare against SameBoy implementation to see where instructions diverges. Re-Implementing interrupts as that could be the source of issue as well.
