@@ -70,7 +70,7 @@ uint8_t execute_ld(Instruction inst) {
             uint16_t addr = read_reg16(reg_type::HL);
             bus_write(addr, read_reg8(inst.reg_2));
             write_reg16(reg_type::HL, static_cast<uint16_t>(addr + 1));
-        return 8;
+            return 8;
         }
         case addr_mode::REG8_MEM_HLI: {
             uint16_t addr = read_reg16(reg_type::HL);
@@ -353,7 +353,7 @@ uint8_t execute_add(Instruction inst) {
     }
 }
 
-void execute_sub(Instruction inst) {
+uint8_t execute_sub(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8_REG8: {
             uint8_t reg_value_1 = read_reg8(inst.reg_1);
@@ -438,7 +438,7 @@ uint8_t execute_adc(Instruction inst) {
             cycles = 8;
             break;
         default:
-            return;
+            return 0;
     }
     
     uint8_t a = cpu.A;
@@ -504,7 +504,7 @@ uint8_t execute_and(Instruction inst) {
             cycles = 8;
             break;
         default:
-            return;
+            return 0;
     }
     
     cpu.A &= src;
@@ -531,7 +531,7 @@ uint8_t execute_xor(Instruction inst) {
             cycles = 8;
             break;
         default:
-            return;
+            return 0;
     }
     
     cpu.A ^= src;
@@ -558,7 +558,7 @@ uint8_t execute_or(Instruction inst) {
             cycles = 8;
             break;
         default:
-            return;
+            break;
     }
     
     cpu.A |= src;
@@ -585,7 +585,7 @@ uint8_t execute_cp(Instruction inst) {
             cycles = 16;
             break;
         default:
-            return;
+            return 0;
     }
     
     uint8_t a = cpu.A;
@@ -795,7 +795,7 @@ uint8_t execute_jp(Instruction inst) {
             break;
         default:
             std::printf("Unknown condition: %d\n", static_cast<int>(inst.cond));
-            return;
+            return 0;
     }
     
     if (should_jump) {
@@ -903,7 +903,13 @@ uint8_t execute_push(Instruction inst) {
 
 uint8_t execute_pop(Instruction inst) {
     uint16_t reg_value = stack_pop16();
+    
     write_reg16(inst.reg_1, reg_value);
+
+    if (inst.reg_1 == reg_type::AF) {
+        cpu.F = cpu.F & 0xF0;
+    }
+    
     return 12;
 }
 
@@ -969,7 +975,7 @@ uint8_t execute_rlc(Instruction inst) {
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }

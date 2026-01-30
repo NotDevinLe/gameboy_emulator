@@ -3,6 +3,10 @@
 #include "cpu.h"
 #include <cstdio>
 #include "ram.h"
+#include "io.h"
+#include "timer.h"
+#include "io.h"
+#include "ppu.h"
 
 int main(int argc, char** argv) {
     const char* path = (argc >= 2) ? argv[1] : "roms/pokemon_red.gb";
@@ -14,13 +18,15 @@ int main(int argc, char** argv) {
 
     cpu_init();
     ram_init();
+    io_init();
 
-    int cycles = 0;
-    while (cycles = cpu_step()) {
+    uint8_t cycles = 0;
+    while (1) {
+        cycles = cpu_step();
         for (int i = 0; i < cycles / 4; i++) {
             timer_tick();
         }
-    }
-
+    } 
+    ppu_step(cycles);
     return 0;
 }

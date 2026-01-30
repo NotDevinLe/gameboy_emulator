@@ -16,4 +16,4 @@ void interrupt_request(interrupt_type t);  // Alias for cpu_request_interrupt
 uint8_t interrupt_get_if();
 void interrupt_set_if(uint8_t value);
 
-void cpu_handle_interrupts(cpu_state *ctx);
+uint8_t cpu_handle_interrupts(cpu_state *ctx);

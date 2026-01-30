@@ -4,10 +4,25 @@
 timer_ctx timer;
 
 void timer_init() {
-    timer.counter = 0;
-    timer.tima = 0;
-    timer.tma = 0;
-    timer.tac = 0;
+    // 1. DIV (Internal Counter)
+    // The internal 16-bit counter starts at 0xABCC. 
+    // The upper 8 bits (DIV register) read as 0xAB.
+    timer.counter = 0xABCC; 
+
+    // 2. TIMA (Timer Counter)
+    timer.tima = 0x00;
+
+    // 3. TMA (Timer Modulo)
+    timer.tma = 0x00;
+
+    // 4. TAC (Timer Control)
+    // The top 5 bits are unused and always read as 1.
+    // Bottom 3 bits are 0 (Timer Stop, Clock 00).
+    // So 1111 1000 = 0xF8
+    timer.tac = 0xF8; 
+
+    // 5. Internal Edge Detectors
+    // Since TAC bit 2 is 0 (stopped), the AND result is false.
     timer.prev_and_result = false;
     timer.interrupt_pending = false;
 }

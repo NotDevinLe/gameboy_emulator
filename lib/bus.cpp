@@ -45,13 +45,29 @@ uint8_t bus_read(uint16_t addr) {
         return hram_read(addr - 0xFF80);
     }
     else if (addr == 0xFFFF) { // IE
-        return cpu.IE;
+        return ram.ie;
     }
 
     return 0xFF;
 }
 
 void bus_write(uint16_t addr, uint8_t val) {
+    // Optional bus write logging to a separate file.
+    // This is useful for deep debugging and comparing against SameBoy.
+    static std::ofstream bus_log("bus_writes.txt", std::ios::trunc);
+    static uint64_t bus_log_count = 0;
+    if (bus_log.is_open() && bus_log_count < 200000) {
+        // Log PC (before/after exact write timing doesn't matter for debugging),
+        // address, and value.
+        bus_log << std::hex << std::uppercase;
+        bus_log << "PC=" << std::setw(4) << static_cast<int>(cpu.PC)
+                << " ADDR=" << std::setw(4) << static_cast<int>(addr)
+                << " VAL=" << std::setw(2) << static_cast<int>(val)
+                << std::dec << "\n";
+        bus_log.flush();
+        ++bus_log_count;
+    }
+
     // ROM / cartridge
     if (addr < 0x8000) {
         cart_write(addr, val);
@@ -63,6 +79,10 @@ void bus_write(uint16_t addr, uint8_t val) {
         cart_ram_write(addr, val);
     }
     else if (addr < 0xE000) { // work ram
+        // In bus_write
+        // if (addr == 0xC363) {
+        //     printf("[DEBUG] Writing to C363! Value: %02X\n", val);
+        // }
         wram_write(addr - 0x2000, val);
     }
     else if (addr < 0xFE00) { // echo ram
@@ -81,7 +101,7 @@ void bus_write(uint16_t addr, uint8_t val) {
         hram_write(addr - 0xFF80, val);
     }
     else if (addr == 0xFFFF) { // IE
-        cpu.IE = val;
+        ram.ie = val;
     }
 }
 

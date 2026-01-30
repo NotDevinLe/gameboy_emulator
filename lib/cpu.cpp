@@ -49,8 +49,6 @@ void cpu_init() {
     cpu.halt = false;
     cpu.stop = false;
     cpu.enabling_ime = false;  // EI delay flag
-    cpu.IF = 0x00;  // Interrupt flags register (0xFF0F)
-    cpu.IE = 0x00;  // Interrupt enable register (0xFFFF)
     cpu.instr_count = 0;
     cpu.cycle_count = 0;
     
@@ -58,49 +56,84 @@ void cpu_init() {
 }
 
 uint8_t cpu_step() {
-    // LLD's order: check if halted first, then process instruction, then handle interrupts
+    uint8_t cycles = 0;
     if (!cpu.halt) {
         // Count instructions
         cpu.instr_count++;
 
         uint16_t pc_before = cpu.PC;
+
         // Fetch opcode
         uint8_t op = bus_read(cpu.PC);
         cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
-        emu_cycles(1);  // Opcode fetch takes 1 cycle
-        
-        // Log at most the first 100,000 instructions to out_ours.txt
-        static int log_count = 0;
-        static std::ofstream log_file("out_ours.txt", std::ios::trunc);
-        if (log_count < 100000 && log_file.is_open()) {
-            log_file << std::hex << std::uppercase << std::setfill('0');
-            log_file << "PC=" << std::setw(4) << pc_before << " OP=" << std::setw(2) << static_cast<int>(op);
-            if (op == 0xCB) {
-                uint8_t cb_op = bus_read(cpu.PC);
-                log_file << " CB=" << std::setw(2) << static_cast<int>(cb_op);
-            }
-            log_file << " AF=" << std::setw(4) << ((static_cast<int>(cpu.A) << 8) | cpu.F)
-                     << " BC=" << std::setw(4) << ((static_cast<int>(cpu.B) << 8) | cpu.C)
-                     << " DE=" << std::setw(4) << ((static_cast<int>(cpu.D) << 8) | cpu.E)
-                     << " HL=" << std::setw(4) << ((static_cast<int>(cpu.H) << 8) | cpu.L)
-                     << " SP=" << std::setw(4) << cpu.SP;
-            log_file << std::dec << "\n";
-            log_file.flush();
-            ++log_count;
-        }
      
         bool is_cb = false;
+        uint8_t cb_op = 0;
 
         if (op == 0xCB) {
             is_cb = true;
             // Fetch CB opcode - takes 1 cycle
             op = bus_read(cpu.PC);
             cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
-            emu_cycles(1);  // CB opcode fetch takes 1 cycle
+            cb_op = op;
+        }
+
+        // --- Logging (first 100000 instructions) ---
+        static std::ofstream log_file("out_ours.txt", std::ios::trunc);
+        static uint64_t log_count = 0;
+
+        if (log_count < 100000 && log_file.is_open()) {
+            log_file << std::hex << std::uppercase << std::setfill('0');
+
+            log_file << "PC=" << std::setw(4) << pc_before
+                     << " OP=" << std::setw(2) << static_cast<int>(op);
+
+            if (is_cb) {
+                log_file << " CB=" << std::setw(2) << static_cast<int>(cb_op);
+            }
+
+            // Core 16-bit register pairs
+            log_file << " AF=" << std::setw(4) << ((static_cast<int>(cpu.A) << 8) | cpu.F)
+                     << " BC=" << std::setw(4) << ((static_cast<int>(cpu.B) << 8) | cpu.C)
+                     << " DE=" << std::setw(4) << ((static_cast<int>(cpu.D) << 8) | cpu.E)
+                     << " HL=" << std::setw(4) << ((static_cast<int>(cpu.H) << 8) | cpu.L)
+                     << " SP=" << std::setw(4) << cpu.SP;
+
+            // Individual flag register and decoded flags
+            uint8_t f = cpu.F;
+            int z = (f & FLAG_Z) ? 1 : 0;
+            int n = (f & FLAG_N) ? 1 : 0;
+            int h = (f & FLAG_H) ? 1 : 0;
+            int c = (f & FLAG_C) ? 1 : 0;
+
+            log_file << " F=" << std::setw(2) << static_cast<int>(f)
+                     << " Z=" << z
+                     << " N=" << n
+                     << " H=" << h
+                     << " C=" << c;
+
+            // CPU control flags
+            log_file << " IME=" << (cpu.ime ? 1 : 0)
+                     << " HALT=" << (cpu.halt ? 1 : 0)
+                     << " STOP=" << (cpu.stop ? 1 : 0);
+
+            // Timer registers (DIV high byte, TIMA, TMA, TAC)
+            uint8_t div  = timer_read(0xFF04);
+            uint8_t tima = timer_read(0xFF05);
+            uint8_t tma  = timer_read(0xFF06);
+            uint8_t tac  = timer_read(0xFF07);
+
+            log_file << " DIV="  << std::setw(2) << static_cast<int>(div)
+                     << " TIMA=" << std::setw(2) << static_cast<int>(tima)
+                     << " TMA="  << std::setw(2) << static_cast<int>(tma)
+                     << " TAC="  << std::setw(2) << static_cast<int>(tac)
+                     << std::dec << "\n";
+
+            log_file.flush();
+            ++log_count;
         }
 
         Instruction inst = decode(op, is_cb);
-        uint8_t cycles = 0;
 
         switch (inst.type) {
         case in_type::IN_NOP: {
@@ -288,19 +321,17 @@ uint8_t cpu_step() {
         }
         }
     } else {
-        // CPU is halted - advance cycles but don't execute instructions
-        emu_cycles(1);
-        
         // If interrupts are pending, wake up (but don't service unless IME is enabled)
-        if (cpu.IF & cpu.IE) {
+        if (bus_read(0xFF0F) & bus_read(0xFFFF)) {
             cpu.halt = false;
         }
+        cycles += 4;
     }
 
     // Handle interrupts AFTER instruction execution (LLD's order)
     // Only check interrupts if IME is enabled
     if (cpu.ime) {
-        cpu_handle_interrupts(&cpu);
+        cycles += cpu_handle_interrupts(&cpu);
         cpu.enabling_ime = false;  // Clear the delay flag after handling interrupts
     }
 

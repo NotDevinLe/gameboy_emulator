@@ -3,63 +3,63 @@
 #include "cpu_instructions.h"
 
 // Core
-void execute_nop(Instruction);
-void execute_ld(Instruction);
-void execute_ldh(Instruction);
+uint8_t execute_nop(Instruction);
+uint8_t execute_ld(Instruction);
+uint8_t execute_ldh(Instruction);
 
 // Arithmetic / logic
-void execute_add(Instruction);
-void execute_adc(Instruction);
-void execute_sub(Instruction);
-void execute_sbc(Instruction);
-void execute_and(Instruction);
-void execute_xor(Instruction);
-void execute_or(Instruction);
-void execute_cp(Instruction);
+uint8_t execute_add(Instruction);
+uint8_t execute_adc(Instruction);
+uint8_t execute_sub(Instruction);
+uint8_t execute_sbc(Instruction);
+uint8_t execute_and(Instruction);
+uint8_t execute_xor(Instruction);
+uint8_t execute_or(Instruction);
+uint8_t execute_cp(Instruction);
 
 // Inc / Dec
-void execute_inc(Instruction);
-void execute_dec(Instruction);
+uint8_t execute_inc(Instruction);
+uint8_t execute_dec(Instruction);
 
 // Rotates (A only)
-void execute_rlca(Instruction);
-void execute_rrca(Instruction);
-void execute_rla(Instruction);
-void execute_rra(Instruction);
+uint8_t execute_rlca(Instruction);
+uint8_t execute_rrca(Instruction);
+uint8_t execute_rla(Instruction);
+uint8_t execute_rra(Instruction);
 
 // Flags
-void execute_daa(Instruction);
-void execute_cpl(Instruction);
-void execute_scf(Instruction);
-void execute_ccf(Instruction);
+uint8_t execute_daa(Instruction);
+uint8_t execute_cpl(Instruction);
+uint8_t execute_scf(Instruction);
+uint8_t execute_ccf(Instruction);
 
 // Control flow
-void execute_jr(Instruction);
-void execute_jp(Instruction);
-void execute_call(Instruction);
-void execute_ret(Instruction);
-void execute_reti(Instruction);
-void execute_rst(Instruction);
+uint8_t execute_jr(Instruction);
+uint8_t execute_jp(Instruction);
+uint8_t execute_call(Instruction);
+uint8_t execute_ret(Instruction);
+uint8_t execute_reti(Instruction);
+uint8_t execute_rst(Instruction);
 
 // Stack
-void execute_push(Instruction);
-void execute_pop(Instruction);
+uint8_t execute_push(Instruction);
+uint8_t execute_pop(Instruction);
 
 // CPU state
-void execute_halt(Instruction);
-void execute_stop(Instruction);
-void execute_di(Instruction);
-void execute_ei(Instruction);
+uint8_t execute_halt(Instruction);
+uint8_t execute_stop(Instruction);
+uint8_t execute_di(Instruction);
+uint8_t execute_ei(Instruction);
 
 // CB-prefixed
-void execute_rlc(Instruction);
-void execute_rrc(Instruction);
-void execute_rl(Instruction);
-void execute_rr(Instruction);
-void execute_sla(Instruction);
-void execute_sra(Instruction);
-void execute_swap(Instruction);
-void execute_srl(Instruction);
-void execute_bit(const Instruction& inst, uint8_t bit_to_check);
-void execute_res(const Instruction& inst, uint8_t bit);
-void execute_set(const Instruction& inst, uint8_t bit);
+uint8_t execute_rlc(Instruction);
+uint8_t execute_rrc(Instruction);
+uint8_t execute_rl(Instruction);
+uint8_t execute_rr(Instruction);
+uint8_t execute_sla(Instruction);
+uint8_t execute_sra(Instruction);
+uint8_t execute_swap(Instruction);
+uint8_t execute_srl(Instruction);
+uint8_t execute_bit(const Instruction& inst, uint8_t bit_to_check);
+uint8_t execute_res(const Instruction& inst, uint8_t bit);
+uint8_t execute_set(const Instruction& inst, uint8_t bit);

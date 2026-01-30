@@ -24,4 +24,4 @@ constexpr uint8_t FLAG_H = 0x20; // Half-carry
 constexpr uint8_t FLAG_C = 0x10; // Carry
 
 void cpu_init();
-bool cpu_step();
+uint8_t cpu_step();
