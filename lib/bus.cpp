@@ -2,6 +2,8 @@
 #include "cart.h"
 #include "ram.h"
 #include "io.h"
+#include "cpu.h"
+#include "emu.h"
 #include <cstdint>
 #include <fstream>
 #include <cstdio>
@@ -43,7 +45,7 @@ uint8_t bus_read(uint16_t addr) {
         return hram_read(addr - 0xFF80);
     }
     else if (addr == 0xFFFF) { // IE
-        return ram.ie;
+        return cpu.IE;
     }
 
     return 0xFF;
@@ -79,7 +81,7 @@ void bus_write(uint16_t addr, uint8_t val) {
         hram_write(addr - 0xFF80, val);
     }
     else if (addr == 0xFFFF) { // IE
-        ram.ie = val;
+        cpu.IE = val;
     }
 }
 

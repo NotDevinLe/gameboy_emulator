@@ -1,89 +1,94 @@
 #include "io.h"
 #include "interrupt.h"
 #include "cpu.h"
-
+#include "timer.h"
+#include "emu.h"
 #include <cstdio>
 #include <cstdint>
 
-// Very small IO implementation focused on what blargg's CPU tests need:
-// - Serial port (SB/SC) for printing test output
-// - IF register plumbing (0xFF0F) delegated to interrupt module
-
+// Serial port registers
 static uint8_t sb_reg = 0; // Serial transfer data (SB, 0xFF01)
 static uint8_t sc_reg = 0; // Serial control (SC, 0xFF02)
 
 uint8_t io_read(uint16_t addr) {
     switch (addr) {
-        case 0xFF00: // JOYPAD - buttons/keys
-            // SameBoy returns 0x80 for this register in blargg tests
-            // This matches the expected behavior for the test ROM
-            return 0x80;
-        case 0xFF44: // LY - current scanline
-            // Minimal LY emulation (no PPU yet).
-            //
-            // `cpu_instrs` polls LY in a tight loop. A pragmatic way to avoid
-            // hangs (and keep behavior closer to SameBoy) is to advance LY based
-            // on *how often it's read*.
-            //
-            // Start at 0x80 (what we observed at the first poll point), then
-            // increment every N reads.
+        case 0xFF00: // JOYPAD
+            return 0x80;  // SameBoy returns 0x80 for blargg tests
+            
+        case 0xFF01: // SB - Serial transfer data
+            return sb_reg;
+            
+        case 0xFF02: // SC - Serial control
+            return sc_reg;
+            
+        case 0xFF04: // DIV
+        case 0xFF05: // TIMA
+        case 0xFF06: // TMA
+        case 0xFF07: // TAC
+            return timer_read(addr);
+            
+        case 0xFF0F: // IF - Interrupt flags
+            return interrupt_get_if();
+            
+        case 0xFF44: // LY - Current scanline
+            // Calculate LY based on machine cycles
+            // Each scanline = 456 CPU cycles = 1824 machine cycles
             {
-                static uint8_t  ly = 0x80;
-                static uint32_t ly_reads = 0;
-                ly_reads++;
-
-                // Tunable: SameBoy's LY in this loop increments roughly every few
-                // iterations. Adjust as needed to keep logs aligned.
-                if ((ly_reads % 6u) == 0) {
-                    ly++;
-                }
-
+                emu_context *emu_ctx = emu_get_context();
+                uint64_t machine_cycles = emu_ctx->ticks;
+                
+                constexpr uint64_t machine_cycles_per_scanline = 1824;  // 456 CPU cycles * 4
+                constexpr uint8_t initial_ly = 0x80;  // LY starts at 0x80 after boot
+                
+                // Calculate scanlines passed
+                uint64_t scanlines_passed = machine_cycles / machine_cycles_per_scanline;
+                
+                // LY = initial + scanlines_passed, wrapped to 0-153
+                uint8_t ly = static_cast<uint8_t>((initial_ly + scanlines_passed) % 154);
+                
                 return ly;
             }
-        case 0xFF01: // SB
-            return sb_reg;
-        case 0xFF02: // SC
-            return sc_reg;
-        case 0xFF0F: // IF
-            return interrupt_get_if();
+            
         default:
-            // Unimplemented IO registers read back as 0xFF for now.
-            return 0xFF;
+            return 0xFF;  // Unimplemented registers read as 0xFF
     }
 }
 
 void io_write(uint16_t addr, uint8_t value) {
     switch (addr) {
-        case 0xFF01: // SB
+        case 0xFF01: // SB - Serial transfer data
             sb_reg = value;
             break;
-
-        case 0xFF02: // SC
+            
+        case 0xFF02: // SC - Serial control
             sc_reg = value;
             // When bit 7 (start) and bit 0 (internal clock) are set,
-            // blargg's tests expect the emulator to immediately "send"
-            // the byte in SB and print it.
+            // blargg's tests expect immediate serial transfer
             if ((sc_reg & 0x81) == 0x81) {
                 std::putchar(static_cast<char>(sb_reg));
                 std::fflush(stdout);
-
-                // Request a serial interrupt (optional but closer to spec)
-                interrupt_request(Interrupt::SERIAL);
-
-                // On real hardware, transfer completes over many cycles
-                // and hardware clears the start bit afterwards. We emulate
-                // an instant transfer by clearing bit 7 immediately.
+                
+                // Request serial interrupt
+                interrupt_request(IT_SERIAL);
+                
+                // Clear start bit (transfer complete)
                 sc_reg &= static_cast<uint8_t>(~0x80u);
             }
             break;
-
-        case 0xFF0F: // IF
+            
+        case 0xFF04: // DIV
+        case 0xFF05: // TIMA
+        case 0xFF06: // TMA
+        case 0xFF07: // TAC
+            timer_write(addr, value);
+            break;
+            
+        case 0xFF0F: // IF - Interrupt flags
             interrupt_set_if(value);
             break;
-
+            
         default:
-            // Ignore writes to unimplemented IO registers for now.
+            // Ignore writes to unimplemented registers
             break;
     }
 }
-

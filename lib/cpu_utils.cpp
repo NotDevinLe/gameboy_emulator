@@ -2,6 +2,7 @@
 #include "cpu_instructions.h"
 #include "cpu.h"
 #include "bus.h"
+#include "emu.h"
 #include <cstdint>
 
 uint8_t read_reg8(reg_type r) {
@@ -61,13 +62,16 @@ void write_reg16(reg_type r, uint16_t v) {
 uint8_t fetch8() {
     uint8_t value = bus_read(cpu.PC);
     cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
+    emu_cycles(1);  // Memory read takes 1 cycle
     return value;
 }
 
 uint16_t fetch16() {
     uint8_t lo = bus_read(cpu.PC);
+    emu_cycles(1);  // First byte read
     cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
     uint8_t hi = bus_read(cpu.PC);
+    emu_cycles(1);  // Second byte read
     cpu.PC = static_cast<uint16_t>(cpu.PC + 1);
     return (static_cast<uint16_t>(hi) << 8) | static_cast<uint16_t>(lo);
 }

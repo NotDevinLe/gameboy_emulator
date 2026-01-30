@@ -15,12 +15,11 @@ int main(int argc, char** argv) {
     cpu_init();
     ram_init();
 
-    int step_count = 0;
-    while (cpu_step()) {
-        // step_count++;
-        // if (step_count > 100) {
-        //     break;
-        // }
+    int cycles = 0;
+    while (cycles = cpu_step()) {
+        for (int i = 0; i < cycles / 4; i++) {
+            timer_tick();
+        }
     }
 
     return 0;

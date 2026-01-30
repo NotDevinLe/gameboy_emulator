@@ -1,42 +1,45 @@
 #include "cpu_proc.h"
+#include "timer.h"
 #include "cpu_instructions.h"
 #include "cpu_utils.h"
 #include "cpu.h"
 #include "bus.h"
+#include "emu.h"
 #include <cstdint>
 #include <cstdio>
 #include <unordered_map>
 #include "stack.h"
 
-void execute_nop(Instruction) {
+uint8_t execute_nop(Instruction) {
     // NOP does nothing
+    return 4;
 }
 
-void execute_ld(Instruction inst) {
+uint8_t execute_ld(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG16_IMM16: {
             write_reg16(inst.reg_1, fetch16());
-            break;
+            return 12;
         }
         case addr_mode::MEM_REG16_REG8: {
             bus_write(read_reg16(inst.reg_1), read_reg8(inst.reg_2));
-            break;
+            return 8;
         }
         case addr_mode::REG8_MEM_REG16: {
             write_reg8(inst.reg_1, bus_read(read_reg16(inst.reg_2)));
-            break;
+            return 8;
         }
         case addr_mode::MEM_IMM16_REG16: {
             bus_write16(fetch16(), read_reg16(inst.reg_2));
-            break;
+            return 20;
         }
         case addr_mode::REG8_IMM8: {
             write_reg8(inst.reg_1, fetch8());
-            break;
+            return 8;
         }
         case addr_mode::REG8_REG8: {
             write_reg8(inst.reg_1, read_reg8(inst.reg_2));
-            break;
+            return 4;
         }
         case addr_mode::REG16_SP_IMM8: {
             // LD HL,SP+e8 (opcode 0xF8):
@@ -57,73 +60,73 @@ void execute_ld(Instruction inst) {
             }
 
             write_reg16(inst.reg_1, result);
-            break;
+            return 12;
         }
         case addr_mode::REG16_REG16: {
             write_reg16(inst.reg_1, read_reg16(inst.reg_2));
-            break;
+            return 8;
         }
         case addr_mode::MEM_HLI_REG8: {
             uint16_t addr = read_reg16(reg_type::HL);
             bus_write(addr, read_reg8(inst.reg_2));
             write_reg16(reg_type::HL, static_cast<uint16_t>(addr + 1));
-            break;
+        return 8;
         }
         case addr_mode::REG8_MEM_HLI: {
             uint16_t addr = read_reg16(reg_type::HL);
             write_reg8(inst.reg_1, bus_read(addr));
             write_reg16(reg_type::HL, static_cast<uint16_t>(addr + 1));
-            break;
+            return 8;
         }
         case addr_mode::MEM_HLD_REG8: {
             uint16_t addr = read_reg16(reg_type::HL);
             bus_write(addr, read_reg8(inst.reg_2));
             write_reg16(reg_type::HL, static_cast<uint16_t>(addr - 1));
-            break;
+            return 8;
         }
         case addr_mode::REG8_MEM_HLD: {
             uint16_t addr = read_reg16(reg_type::HL);
             write_reg8(inst.reg_1, bus_read(addr));
             write_reg16(reg_type::HL, static_cast<uint16_t>(addr - 1));
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16_IMM8: {
             uint16_t addr = read_reg16(inst.reg_1);
             bus_write(addr, fetch8());
-            break;
+            return 12;
         }
         case addr_mode::MEM_FF00_IMM8_REG8: {
             uint8_t imm = fetch8();
             uint16_t addr = static_cast<uint16_t>(0xFF00 + imm);
             bus_write(addr, read_reg8(inst.reg_2));
-            break;
+            return 12;
         }
         case addr_mode::REG8_MEM_FF00_IMM8: {
             uint8_t imm = fetch8();
             uint16_t addr = static_cast<uint16_t>(0xFF00 + imm);
             uint8_t value = bus_read(addr);
             write_reg8(inst.reg_1, value);
-            break;
+            return 12;
         }
         case addr_mode::MEM_FF00_C_REG8: {
             uint16_t addr = static_cast<uint16_t>(0xFF00 + cpu.C);
             bus_write(addr, read_reg8(inst.reg_2));
-            break;
+            return 8;
         }
         case addr_mode::REG8_MEM_FF00_C: {
             uint16_t addr = static_cast<uint16_t>(0xFF00 + cpu.C);
             write_reg8(inst.reg_1, bus_read(addr));
-            break;
+            return 8;
         }
         case addr_mode::REG8_MEM_IMM16: {
             uint16_t addr = fetch16();
             write_reg8(inst.reg_1, bus_read(addr));
-            break;
+            return 16;
         }
         case addr_mode::MEM_IMM16_REG8: {
             uint16_t addr = fetch16();
             bus_write(addr, read_reg8(inst.reg_1));
-            break;
+            return 16;
         }
 
         default: {
@@ -133,13 +136,13 @@ void execute_ld(Instruction inst) {
     }
 }
 
-void execute_inc(Instruction inst) {
+uint8_t execute_inc(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG16: {
             uint16_t reg_value = read_reg16(inst.reg_1);
             uint16_t result = reg_value + 1;
             write_reg16(inst.reg_1, result);
-            break;
+            return 8;
         }
         case addr_mode::REG8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -161,7 +164,7 @@ void execute_inc(Instruction inst) {
             }
             // N is 0 for INC (already clear from f &= FLAG_C above)
             cpu.F = f;
-            break;
+            return 4;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -178,7 +181,7 @@ void execute_inc(Instruction inst) {
                 f |= FLAG_H;
             }
             cpu.F = f;
-            break;
+            return 12;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
@@ -187,13 +190,13 @@ void execute_inc(Instruction inst) {
     }
 }
 
-void execute_dec(Instruction inst) {
+uint8_t execute_dec(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG16: {
             uint16_t reg_value = read_reg16(inst.reg_1);
             uint16_t result = reg_value - 1;
             write_reg16(inst.reg_1, result);
-            break;
+            return 8;
         }
         case addr_mode::REG8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -215,7 +218,7 @@ void execute_dec(Instruction inst) {
             cpu.F = f;
             write_reg8(inst.reg_1, result);
             
-            break;
+            return 4;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -233,16 +236,16 @@ void execute_dec(Instruction inst) {
             }
             f |= FLAG_N;
             cpu.F = f;
-            break;
+            return 12;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_add(Instruction inst) {
+uint8_t execute_add(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG16_REG16: {
             uint16_t reg_value_1 = read_reg16(inst.reg_1);
@@ -260,7 +263,7 @@ void execute_add(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::REG16_IMM8: {
             // This mode is used for ADD SP, r8 (opcode 0xE8).
@@ -282,7 +285,7 @@ void execute_add(Instruction inst) {
             }
 
             write_reg16(inst.reg_1, result);
-            break;
+            return 16;
         }
         case addr_mode::REG8_REG8: {
             uint8_t reg_value_1 = read_reg8(inst.reg_1);
@@ -302,7 +305,7 @@ void execute_add(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 4;
         }
         case addr_mode::REG8_MEM_REG16: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -322,7 +325,7 @@ void execute_add(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::REG8_IMM8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -341,11 +344,11 @@ void execute_add(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 8;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
@@ -370,7 +373,7 @@ void execute_sub(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 4;
         }
         case addr_mode::REG8_IMM8: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -389,7 +392,7 @@ void execute_sub(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::REG8_MEM_REG16: {
             uint8_t reg_value = read_reg8(inst.reg_1);
@@ -409,26 +412,30 @@ void execute_sub(Instruction inst) {
                 f |= FLAG_C;
             }
             cpu.F = f;
-            break;
+            return 8;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_adc(Instruction inst) {
+uint8_t execute_adc(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 8;
             break;
         default:
             return;
@@ -443,22 +450,28 @@ void execute_adc(Instruction inst) {
     if (cpu.A == 0) cpu.F |= FLAG_Z;
     if (((a & 0x0F) + (src & 0x0F) + (carry_in ? 1 : 0)) > 0x0F) cpu.F |= FLAG_H;
     if (result > 0xFF) cpu.F |= FLAG_C;
+
+    return cycles;
 }
 
-void execute_sbc(Instruction inst) {
+uint8_t execute_sbc(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 8;
             break;
         default:
-            return;
+            return 0;
     }
     
     uint8_t a = cpu.A;
@@ -470,19 +483,25 @@ void execute_sbc(Instruction inst) {
     if (cpu.A == 0) cpu.F |= FLAG_Z;
     if (((a & 0x0F) - (src & 0x0F) - (carry_in ? 1 : 0)) < 0) cpu.F |= FLAG_H;
     if (result < 0) cpu.F |= FLAG_C;
+
+    return cycles;
 }
 
-void execute_and(Instruction inst) {
+uint8_t execute_and(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 8;
             break;
         default:
             return;
@@ -491,19 +510,25 @@ void execute_and(Instruction inst) {
     cpu.A &= src;
     cpu.F = FLAG_H;
     if (cpu.A == 0) cpu.F |= FLAG_Z;
+
+    return cycles;
 }
 
-void execute_xor(Instruction inst) {
+uint8_t execute_xor(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 8;
             break;
         default:
             return;
@@ -512,19 +537,25 @@ void execute_xor(Instruction inst) {
     cpu.A ^= src;
     cpu.F = 0;
     if (cpu.A == 0) cpu.F |= FLAG_Z;
+
+    return cycles;
 }
 
-void execute_or(Instruction inst) {
+uint8_t execute_or(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 8;
             break;
         default:
             return;
@@ -533,19 +564,25 @@ void execute_or(Instruction inst) {
     cpu.A |= src;
     cpu.F = 0;
     if (cpu.A == 0) cpu.F |= FLAG_Z;
+
+    return cycles;
 }
 
-void execute_cp(Instruction inst) {
+uint8_t execute_cp(Instruction inst) {
     uint8_t src = 0;
+    uint8_t cycles = 0;
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
+            cycles = 8;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
+            cycles = 16;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
+            cycles = 16;
             break;
         default:
             return;
@@ -558,14 +595,16 @@ void execute_cp(Instruction inst) {
     if (result == 0) cpu.F |= FLAG_Z;
     if ((a & 0x0F) < (src & 0x0F)) cpu.F |= FLAG_H;
     if (a < src) cpu.F |= FLAG_C;
+
+    return cycles;
 }
 
-void execute_ldh(Instruction inst) {
+uint8_t execute_ldh(Instruction inst) {
     // LDH is handled as LD with MEM_FF00 modes
-    execute_ld(inst);
+    return execute_ld(inst);
 }
 
-void execute_rlca(Instruction) {
+uint8_t execute_rlca(Instruction) {
     uint8_t a = cpu.A;
     uint8_t c = (a >> 7) & 1;
 
@@ -576,9 +615,10 @@ void execute_rlca(Instruction) {
     if (c) {
         cpu.F |= FLAG_C;
     }
+    return 4;
 }
 
-void execute_rrca(Instruction) {
+uint8_t execute_rrca(Instruction) {
     uint8_t a = cpu.A;
     uint8_t c = a & 1;
 
@@ -589,9 +629,10 @@ void execute_rrca(Instruction) {
     if (c) {
         cpu.F |= FLAG_C;
     }
+    return 4;
 }
 
-void execute_rla(Instruction) {
+uint8_t execute_rla(Instruction) {
     uint8_t a = cpu.A;
     uint8_t old_c = cpu.F & FLAG_C;
     uint8_t new_c = (a >> 7) & 1;
@@ -603,9 +644,10 @@ void execute_rla(Instruction) {
     if (new_c) {
         cpu.F |= FLAG_C;
     }
+    return 4;
 }
 
-void execute_rra(Instruction) {
+uint8_t execute_rra(Instruction) {
     uint8_t a = cpu.A;
     uint8_t old_c = (cpu.F & FLAG_C) ? 1 : 0;
     uint8_t new_c = a & 1;
@@ -617,9 +659,10 @@ void execute_rra(Instruction) {
     if (new_c) {
         cpu.F |= FLAG_C;
     }
+    return 4;
 }
 
-void execute_daa(Instruction) {
+uint8_t execute_daa(Instruction) {
     uint8_t a = cpu.A;
     uint8_t f = cpu.F;
 
@@ -653,67 +696,76 @@ void execute_daa(Instruction) {
     if (carry_out) f |= FLAG_C;
 
     cpu.F = f;
+    return 4;
 }
 
-void execute_cpl(Instruction) {
+uint8_t execute_cpl(Instruction) {
     cpu.A = ~cpu.A;
 
     cpu.F |= FLAG_N;
     cpu.F |= FLAG_H;
+    return 4;
 }
 
-void execute_scf(Instruction) {
+uint8_t execute_scf(Instruction) {
     // SCF: Clear N and H, preserve Z, set C
     uint8_t z = cpu.F & FLAG_Z;
     cpu.F = z | FLAG_C;
+    return 4;
 }
 
-void execute_ccf(Instruction) {
+uint8_t execute_ccf(Instruction) {
     // CCF: Clear N and H, preserve Z, toggle C
     uint8_t z = cpu.F & FLAG_Z;
     uint8_t c = (~cpu.F) & FLAG_C;
     cpu.F = z | c;
+    return 4;
 }
 
-void execute_jr(Instruction inst) {
+uint8_t execute_jr(Instruction inst) {
     int8_t offset = fetch8();
+    uint8_t cycles = 8;
     switch (inst.cond) {
         case cond_type::CT_NONE: {
             cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
-            break;
+            return 12;
         }
         case cond_type::CT_Z: {
             if (cpu.F & FLAG_Z) {
                 cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cycles = 12;
             }
-            break;
+            return cycles;
         }
         case cond_type::CT_NZ: {
             if (!(cpu.F & FLAG_Z)) {
                 cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cycles = 12;
             }
-            break;
+            return cycles;
         }
         case cond_type::CT_C: {
             if (cpu.F & FLAG_C) {
                 cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cycles = 12;
             }
-            break;
+            return cycles;
         }
         case cond_type::CT_NC: {
             if (!(cpu.F & FLAG_C)) {
                 cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cycles = 12;
             }
-            break;
+            return cycles;
         }
         default: {
             std::printf("Unknown condition: %d\n", inst.cond);
-            break;
+            return 0;
         }
     }
 }
 
-void execute_jp(Instruction inst) {
+uint8_t execute_jp(Instruction inst) {
     bool should_jump = false;
     
     if (inst.mode == addr_mode::REG16) {
@@ -721,7 +773,7 @@ void execute_jp(Instruction inst) {
         uint16_t addr = read_reg16(inst.reg_1);
         // std::printf("JP (HL): jumping to %04X (HL=%04X)\n", addr, read_reg16(reg_type::HL));
         cpu.PC = addr;
-        return;
+        return 4;
     }
     
     uint16_t addr = fetch16();
@@ -748,9 +800,12 @@ void execute_jp(Instruction inst) {
     
     if (should_jump) {
         cpu.PC = addr;
+        return 16;
     }
+    return 12;
 }
-void execute_call(Instruction inst) {
+
+uint8_t execute_call(Instruction inst) {
     uint16_t addr = fetch16();
     bool should_call = false;
     
@@ -772,7 +827,7 @@ void execute_call(Instruction inst) {
             break;
         default:
             std::printf("Unknown condition: %d\n", static_cast<int>(inst.cond));
-            return;
+            return 0;
     }
     
     if (should_call) {
@@ -781,15 +836,18 @@ void execute_call(Instruction inst) {
         bus_write16(cpu.SP, ret_addr);
         // std::printf("CALL: jumping to %04X, return addr %04X, SP=%04X\n", addr, ret_addr, cpu.SP);
         cpu.PC = addr;
+        return 24;
     }
+    return 12;
 }
 
-void execute_ret(Instruction inst) {
+uint8_t execute_ret(Instruction inst) {
     bool should_ret = false;
-    
+    uint8_t cycles = 0;
     switch (inst.cond) {
         case cond_type::CT_NONE:
             should_ret = true;
+            cycles = 16;
             break;
         case cond_type::CT_Z:
             should_ret = (cpu.F & FLAG_Z) != 0;
@@ -804,7 +862,7 @@ void execute_ret(Instruction inst) {
             should_ret = (cpu.F & FLAG_C) == 0;
             break;
         default:
-            return;
+            return 0;
     }
     
     if (should_ret) {
@@ -812,48 +870,65 @@ void execute_ret(Instruction inst) {
         // std::printf("RET: returning to %04X from SP=%04X\n", ret_addr, cpu.SP);
         cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
         cpu.PC = ret_addr;
+        if (cycles == 16) {
+            return cycles;
+        }
+        return 20;
     }
+    return 8;
 }
 
-void execute_reti(Instruction) {
+uint8_t execute_reti(Instruction) {
     uint16_t ret_addr = bus_read16(cpu.SP);
     cpu.SP = static_cast<uint16_t>(cpu.SP + 2);
     cpu.PC = ret_addr;
     cpu.ime = true;
+    return 16;
 }
 
-void execute_rst(Instruction inst) {
+uint8_t execute_rst(Instruction inst) {
     uint8_t rst_vec = inst.param;
     uint16_t ret_addr = cpu.PC;
     cpu.SP = static_cast<uint16_t>(cpu.SP - 2);
     bus_write16(cpu.SP, ret_addr);
     cpu.PC = rst_vec;
+    return 16;
 }
 
-void execute_push(Instruction inst) {
+uint8_t execute_push(Instruction inst) {
     uint16_t reg_value = read_reg16(inst.reg_1);
-    stack_push(reg_value);
+    stack_push16(reg_value);
+    return 16;
 }
 
-void execute_pop(Instruction inst) {
-    uint16_t reg_value = stack_pop();
+uint8_t execute_pop(Instruction inst) {
+    uint16_t reg_value = stack_pop16();
     write_reg16(inst.reg_1, reg_value);
+    return 12;
 }
 
-void execute_halt(Instruction) {
+uint8_t execute_halt(Instruction) {
     cpu.halt = true;
+    return 4;
 }
-void execute_stop(Instruction) {
+uint8_t execute_stop(Instruction) {
     cpu.stop = true;
+    timer_write_div();
+    return 4;
 }
-void execute_di(Instruction) {
+uint8_t execute_di(Instruction) {
     cpu.ime = false;
+    cpu.enabling_ime = false;  // Clear any pending EI
+    return 4;
 }
-void execute_ei(Instruction) {
-    cpu.ime = true;
+uint8_t execute_ei(Instruction) {
+    // EI delays IME enabling by one instruction (LLD's behavior)
+    // Set flag to enable IME on the next instruction
+    cpu.enabling_ime = true;
+    return 4;
 }
 
-void execute_rlc(Instruction inst) {
+uint8_t execute_rlc(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -871,7 +946,7 @@ void execute_rlc(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -890,7 +965,7 @@ void execute_rlc(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
@@ -899,7 +974,7 @@ void execute_rlc(Instruction inst) {
     }
 }
 
-void execute_rrc(Instruction inst) {
+uint8_t execute_rrc(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -917,7 +992,7 @@ void execute_rrc(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -936,16 +1011,16 @@ void execute_rrc(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_rl(Instruction inst) {
+uint8_t execute_rl(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -964,7 +1039,7 @@ void execute_rl(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -983,16 +1058,16 @@ void execute_rl(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_rr(Instruction inst) {
+uint8_t execute_rr(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -1011,7 +1086,7 @@ void execute_rr(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -1030,16 +1105,16 @@ void execute_rr(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_sla(Instruction inst) {
+uint8_t execute_sla(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -1057,7 +1132,7 @@ void execute_sla(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -1076,16 +1151,16 @@ void execute_sla(Instruction inst) {
             }
 
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_sra(Instruction inst) {
+uint8_t execute_sra(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t v = read_reg8(inst.reg_1);
@@ -1097,7 +1172,7 @@ void execute_sra(Instruction inst) {
             if (result == 0) f |= FLAG_Z;
             if (c)          f |= FLAG_C;
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -1110,16 +1185,16 @@ void execute_sra(Instruction inst) {
             if (result == 0) f |= FLAG_Z;
             if (c)          f |= FLAG_C;
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_swap(Instruction inst) {
+uint8_t execute_swap(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -1128,7 +1203,7 @@ void execute_swap(Instruction inst) {
             uint8_t f = 0;
             if (result == 0) f |= FLAG_Z;
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -1138,16 +1213,16 @@ void execute_swap(Instruction inst) {
             uint8_t f = 0;
             if (result == 0) f |= FLAG_Z;
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_srl(Instruction inst) {
+uint8_t execute_srl(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t a = read_reg8(inst.reg_1);
@@ -1158,7 +1233,7 @@ void execute_srl(Instruction inst) {
             if (result == 0) f |= FLAG_Z;
             if (c) f |= FLAG_C;
             cpu.F = f;
-            break;
+            return 8;
         }
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
@@ -1170,16 +1245,16 @@ void execute_srl(Instruction inst) {
             if (result == 0) f |= FLAG_Z;
             if (c) f |= FLAG_C;
             cpu.F = f;
-            break;
+            return 16;
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_bit(const Instruction& inst, uint8_t bit_to_check) {
+uint8_t execute_bit(const Instruction& inst, uint8_t bit_to_check) {
     uint8_t mask = static_cast<uint8_t>(1u << (bit_to_check & 7));
 
     switch (inst.mode) {
@@ -1191,7 +1266,7 @@ void execute_bit(const Instruction& inst, uint8_t bit_to_check) {
             f |= FLAG_H;
             if (test == 0) f |= FLAG_Z;
             cpu.F = f;
-            break;
+            return 8;
         }
 
         case addr_mode::MEM_REG16: {
@@ -1203,58 +1278,58 @@ void execute_bit(const Instruction& inst, uint8_t bit_to_check) {
             f |= FLAG_H;
             if (test == 0) f |= FLAG_Z;
             cpu.F = f;
-            break;
+            return 12;
         }
 
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
 
-void execute_res(const Instruction& inst, uint8_t bit) {
+uint8_t execute_res(const Instruction& inst, uint8_t bit) {
     uint8_t mask = static_cast<uint8_t>(~(1u << (bit & 7)));
 
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t v = read_reg8(inst.reg_1);
             write_reg8(inst.reg_1, static_cast<uint8_t>(v & mask));
-            break;
+            return 8;
         }
 
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
             uint8_t v = bus_read(addr);
             bus_write(addr, static_cast<uint8_t>(v & mask));
-            break;
+            return 16;
         }
 
         default:
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
     }
 }
 
-void execute_set(const Instruction& inst, uint8_t bit) {
+uint8_t execute_set(const Instruction& inst, uint8_t bit) {
     uint8_t mask = static_cast<uint8_t>(1u << (bit & 7));
 
     switch (inst.mode) {
         case addr_mode::REG8: {
             uint8_t v = read_reg8(inst.reg_1);
             write_reg8(inst.reg_1, static_cast<uint8_t>(v | mask));
-            break;
+            return 8;
         }
 
         case addr_mode::MEM_REG16: {
             uint16_t addr = read_reg16(inst.reg_1);
             uint8_t v = bus_read(addr);
             bus_write(addr, static_cast<uint8_t>(v | mask));
-            break;
+            return 16;
         }
 
         default:
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
     }
 }

@@ -1,10 +1,12 @@
 #include "cpu.h"
 #include "bus.h"
 #include "stack.h"
+#include "emu.h"
 
 void stack_push(uint8_t value) {
     cpu.SP = static_cast<uint16_t>(cpu.SP - 1);
-    bus_write8(cpu.SP, value);
+    bus_write(cpu.SP, value);
+    emu_cycles(1);  // Stack write takes 1 cycle
 }
 
 void stack_push16(uint16_t value) {
@@ -13,8 +15,9 @@ void stack_push16(uint16_t value) {
 }
 
 uint8_t stack_pop() {
-    uint8_t value = bus_read8(cpu.SP);
+    uint8_t value = bus_read(cpu.SP);
     cpu.SP = static_cast<uint16_t>(cpu.SP + 1);
+    emu_cycles(1);  // Stack read takes 1 cycle
     return value;
 }
 
