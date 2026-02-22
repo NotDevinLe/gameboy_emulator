@@ -4,6 +4,7 @@
 typedef struct {
     bool paused;
     bool running;
+    bool die;        // Flag to signal emulator should exit
     uint64_t ticks;  // Machine cycles (4 per CPU cycle)
 } emu_context;
 

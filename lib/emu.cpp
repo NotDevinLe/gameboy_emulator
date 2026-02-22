@@ -1,5 +1,6 @@
 #include "emu.h"
 #include "timer.h"
+#include "dma.h"
 #include <cstdint>
 
 static emu_context ctx = {};
@@ -16,6 +17,7 @@ void emu_cycles(int cpu_cycles) {
     for (int i = 0; i < cpu_cycles; i++) {
         ctx.ticks += 4;  // Track machine cycles
         timer_tick();    // Called once per CPU cycle, increments counter by 4
+        dma_tick();      // Tick DMA (handles OAM transfers)
     }
 }
 

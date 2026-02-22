@@ -6,6 +6,7 @@
 void stack_push(uint8_t value) {
     cpu.SP = static_cast<uint16_t>(cpu.SP - 1);
     bus_write(cpu.SP, value);
+    // Cycle counting is handled by the instruction that calls this
 }
 
 void stack_push16(uint16_t value) {
@@ -16,6 +17,7 @@ void stack_push16(uint16_t value) {
 uint8_t stack_pop() {
     uint8_t value = bus_read(cpu.SP);
     cpu.SP = static_cast<uint16_t>(cpu.SP + 1);
+    // Cycle counting is handled by the instruction that calls this
     return value;
 }
 

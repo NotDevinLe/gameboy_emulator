@@ -22,6 +22,3 @@ bool cart_load(const char *cart);
 
 uint8_t cart_read(uint16_t address);
 void cart_write(uint16_t address, uint8_t value);
-
-uint8_t cart_ram_read(uint16_t address);
-void cart_ram_write(uint16_t address, uint8_t value);

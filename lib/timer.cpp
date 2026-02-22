@@ -16,10 +16,10 @@ void timer_init() {
     timer.tma = 0x00;
 
     // 4. TAC (Timer Control)
-    // The top 5 bits are unused and always read as 1.
+    // Post-boot state: TAC = 0x00 (Timer stopped)
+    // The top 5 bits are unused and always read as 1 when reading.
     // Bottom 3 bits are 0 (Timer Stop, Clock 00).
-    // So 1111 1000 = 0xF8
-    timer.tac = 0xF8; 
+    timer.tac = 0x00; 
 
     // 5. Internal Edge Detectors
     // Since TAC bit 2 is 0 (stopped), the AND result is false.
@@ -29,7 +29,7 @@ void timer_init() {
 
 void timer_tick() {
     // each tick is called every 4 machine cycles
-    timer.counter+= 4;
+    timer.counter+= 1;
 
     bool current_signal = (timer.tac & 0x04) != 0;
 
@@ -91,6 +91,7 @@ void tima_increment() {
     if (timer.tima == 0) {
         timer.tima = timer.tma;
         timer.interrupt_pending = true;
+        request_interrupt(IT_TIMER);
     }
 }
 

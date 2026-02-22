@@ -1,7 +1,8 @@
 #include "ppu.h"
 #include "io.h"      // Access to io.ly and io.lcdc
 #include "bus.h"     // Access to interrupts (0xFF0F)
-#include <stdint.h>
+#include "ram.h"     // Access to OAM
+#include <cstdint>
 
 // PPU State
 int ppu_dots = 0;
@@ -44,5 +45,15 @@ void ppu_step(uint8_t cycles) {
         if (io.ly > 153) {
             io.ly = 0;
         }
+    }
+}
+
+void ppu_oam_write(uint16_t address, uint8_t value) {
+    extern Ram ram;
+    if (address >= 0xFE00) {
+        address -= 0xFE00;
+    }
+    if (address < 0xA0) {
+        ram.oam[address] = value;
     }
 }

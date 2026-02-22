@@ -6,7 +6,11 @@ Ram ram;
 void ram_init() {
     memset(ram.vram, 0, sizeof(ram.vram));
     memset(ram.wram, 0, sizeof(ram.wram));
+    memset(ram.oam, 0, sizeof(ram.oam));
     memset(ram.hram, 0, sizeof(ram.hram));
+    
+    // IE register (0xFFFF) - post-boot state is 0x00
+    ram.ie = 0x00;
 }
 
 uint8_t vram_read(uint16_t index) {

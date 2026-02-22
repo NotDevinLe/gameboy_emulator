@@ -25,3 +25,5 @@ Jan 29 - All functionality for the Blargg's CPU test should be implemented now. 
 Jan 30 - Rewrote timer logic. Added 100% accurate T-Cycle tracking through returning it via cpu_step(). Was originally running into a timer divergence error. Interrupts are most likely still wrong. Need to fix IO handling.
 
 Blargg's CPU tests: it seems that there are some expectations of a false PPU. Similar to timer divergences, I suspect threre are also PPU timer divergences. The PPU has it's own timer called the LY register. However, for these tests, LY shouldn't depend on any of the PPU just yet, it will only be affected by the LCDC bit. We also need a minimum V-Blank logic implementation.
+
+Feb 1 - Wrote my own debugging pipeline that checks registers, flags, and memory writes for discrepancies. Found several in the code. It's impossible to figure out where my gameboy implementation diverges from the SameBoy, so I'm going to use another gameboy cpu testing github **Game Boy CPU (SM83) Tests**. 

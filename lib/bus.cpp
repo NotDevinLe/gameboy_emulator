@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 extern Ram ram;
 
@@ -22,18 +23,17 @@ uint8_t bus_read(uint16_t addr) {
     else if (addr < 0xA000) { // vram
         return vram_read(addr - 0x8000);
     }
-    else if (addr < 0xC000) { // external ram
-        return cart_ram_read(addr);
+    else if (addr < 0xC000) { // external ram (cartridge RAM)
+        return cart_read(addr);
     }
     else if (addr < 0xE000) { // work ram
-        return wram_read(addr - 0x2000);
+        return wram_read(addr - 0xC000);
     }
     else if (addr < 0xFE00) { // echo ram
         return wram_read(addr - 0xE000);
     }
-    else if (addr < 0xFEA0) { // OAM
-        // TODO: implement this
-        return 0xFF;
+    else if (addr < 0xFEA0) { // OAM (Object Attribute Memory)
+        return ram.oam[addr - 0xFE00];
     }
     else if (addr < 0xFF00) { // unusable memory area
         return 0xFF;
@@ -52,22 +52,6 @@ uint8_t bus_read(uint16_t addr) {
 }
 
 void bus_write(uint16_t addr, uint8_t val) {
-    // Optional bus write logging to a separate file.
-    // This is useful for deep debugging and comparing against SameBoy.
-    static std::ofstream bus_log("bus_writes.txt", std::ios::trunc);
-    static uint64_t bus_log_count = 0;
-    if (bus_log.is_open() && bus_log_count < 200000) {
-        // Log PC (before/after exact write timing doesn't matter for debugging),
-        // address, and value.
-        bus_log << std::hex << std::uppercase;
-        bus_log << "PC=" << std::setw(4) << static_cast<int>(cpu.PC)
-                << " ADDR=" << std::setw(4) << static_cast<int>(addr)
-                << " VAL=" << std::setw(2) << static_cast<int>(val)
-                << std::dec << "\n";
-        bus_log.flush();
-        ++bus_log_count;
-    }
-
     // ROM / cartridge
     if (addr < 0x8000) {
         cart_write(addr, val);
@@ -75,21 +59,17 @@ void bus_write(uint16_t addr, uint8_t val) {
     else if (addr < 0xA000) { // vram
         vram_write(addr - 0x8000, val);
     }
-    else if (addr < 0xC000) { // external ram
-        cart_ram_write(addr, val);
+    else if (addr < 0xC000) { // external ram (cartridge RAM)
+        cart_write(addr, val);
     }
     else if (addr < 0xE000) { // work ram
-        // In bus_write
-        // if (addr == 0xC363) {
-        //     printf("[DEBUG] Writing to C363! Value: %02X\n", val);
-        // }
-        wram_write(addr - 0x2000, val);
+        wram_write(addr - 0xC000, val);
     }
-    else if (addr < 0xFE00) { // echo ram
+    else if (addr < 0xFE00) { // echo ram - mirrors WRAM (0xC000-0xDDFF)
         wram_write(addr - 0xE000, val);
     }
-    else if (addr < 0xFEA0) { // OAM
-        // TODO: implement this
+    else if (addr < 0xFEA0) { // OAM (Object Attribute Memory)
+        ram.oam[addr - 0xFE00] = val;
     }
     else if (addr < 0xFF00) { // unusable memory area
 
@@ -106,13 +86,13 @@ void bus_write(uint16_t addr, uint8_t val) {
 }
 
 uint16_t bus_read16(uint16_t addr) {
-    uint8_t lo = bus_read(addr);
-    uint8_t hi = bus_read(static_cast<uint16_t>(addr + 1));
-    return (static_cast<uint16_t>(hi) << 8) | static_cast<uint16_t>(lo);
+    uint16_t lo = bus_read(addr);
+    uint16_t hi = bus_read(addr + 1);
+    return (hi << 8) | lo;
 }
 
 void bus_write16(uint16_t addr, uint16_t val) {
     // Game Boy is little-endian: low byte at addr, high byte at addr+1.
-    bus_write(addr,     static_cast<uint8_t>(val & 0xFF));
-    bus_write(addr + 1, static_cast<uint8_t>((val >> 8) & 0xFF));
+    bus_write(addr + 1, (val >> 8) & 0xFF);
+    bus_write(addr,     val & 0xFF);
 }

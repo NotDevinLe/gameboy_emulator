@@ -9,6 +9,10 @@
 #include <cstdio>
 #include <unordered_map>
 #include "stack.h"
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include "ram.h"
 
 uint8_t execute_nop(Instruction) {
     // NOP does nothing
@@ -120,18 +124,19 @@ uint8_t execute_ld(Instruction inst) {
         }
         case addr_mode::REG8_MEM_IMM16: {
             uint16_t addr = fetch16();
-            write_reg8(inst.reg_1, bus_read(addr));
+            uint8_t value = bus_read(addr);
+            write_reg8(inst.reg_1, value);
             return 16;
         }
         case addr_mode::MEM_IMM16_REG8: {
             uint16_t addr = fetch16();
-            bus_write(addr, read_reg8(inst.reg_1));
+            bus_write(addr, read_reg8(inst.reg_2));
             return 16;
         }
 
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
@@ -185,7 +190,7 @@ uint8_t execute_inc(Instruction inst) {
         }
         default: {
             std::printf("Unknown address mode: %d\n", static_cast<int>(inst.mode));
-            break;
+            return 0;
         }
     }
 }
@@ -574,15 +579,15 @@ uint8_t execute_cp(Instruction inst) {
     switch (inst.mode) {
         case addr_mode::REG8_REG8:
             src = read_reg8(inst.reg_2);
-            cycles = 8;
+            cycles = 4;
             break;
         case addr_mode::REG8_MEM_REG16:
             src = bus_read(read_reg16(inst.reg_2));
-            cycles = 16;
+            cycles = 8;
             break;
         case addr_mode::REG8_IMM8:
             src = fetch8();
-            cycles = 16;
+            cycles = 8;
             break;
         default:
             return 0;
@@ -634,7 +639,7 @@ uint8_t execute_rrca(Instruction) {
 
 uint8_t execute_rla(Instruction) {
     uint8_t a = cpu.A;
-    uint8_t old_c = cpu.F & FLAG_C;
+    uint8_t old_c = (cpu.F & FLAG_C) ? 1 : 0;
     uint8_t new_c = (a >> 7) & 1;
 
     cpu.A = (a << 1) | old_c;
@@ -727,33 +732,33 @@ uint8_t execute_jr(Instruction inst) {
     uint8_t cycles = 8;
     switch (inst.cond) {
         case cond_type::CT_NONE: {
-            cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+            cpu.PC = static_cast<uint16_t>(static_cast<int32_t>(cpu.PC) + offset);
             return 12;
         }
         case cond_type::CT_Z: {
             if (cpu.F & FLAG_Z) {
-                cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cpu.PC = static_cast<uint16_t>(static_cast<int32_t>(cpu.PC) + offset);
                 cycles = 12;
             }
             return cycles;
         }
         case cond_type::CT_NZ: {
             if (!(cpu.F & FLAG_Z)) {
-                cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cpu.PC = static_cast<uint16_t>(static_cast<int32_t>(cpu.PC) + offset);
                 cycles = 12;
             }
             return cycles;
         }
         case cond_type::CT_C: {
             if (cpu.F & FLAG_C) {
-                cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cpu.PC = static_cast<uint16_t>(static_cast<int32_t>(cpu.PC) + offset);
                 cycles = 12;
             }
             return cycles;
         }
         case cond_type::CT_NC: {
             if (!(cpu.F & FLAG_C)) {
-                cpu.PC = static_cast<uint16_t>(cpu.PC + offset);
+                cpu.PC = static_cast<uint16_t>(static_cast<int32_t>(cpu.PC) + offset);
                 cycles = 12;
             }
             return cycles;

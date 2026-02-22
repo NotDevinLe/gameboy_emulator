@@ -6,7 +6,7 @@ struct cpu_state {
     uint16_t PC, SP;
     bool ime, halt, stop;
     bool enabling_ime;  // EI delays IME enabling by one instruction
-    uint8_t IF, IE;  // Interrupt flags: IF (0xFF0F) and IE (0xFFFF) are 8-bit registers
+    bool ime_pending;   // IME will be enabled on next instruction (after EI delay)
     // Monotonic instruction counter (increments once per executed instruction).
     // Used for lightweight timing approximations (e.g., LY).
     uint64_t instr_count;
@@ -14,6 +14,9 @@ struct cpu_state {
     // More accurate than instruction count for timing (LY, DIV, etc.)
     // Average instruction takes ~4 cycles, so we approximate with 4 cycles per instruction.
     uint64_t cycle_count;
+    // PC of the current instruction being executed (captured at start of instruction)
+    // Used for accurate logging in bus_write and other memory operations
+    uint16_t last_opcode_pc;
 };
 
 extern cpu_state cpu;

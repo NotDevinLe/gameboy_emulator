@@ -55,3 +55,22 @@ uint8_t cpu_handle_interrupts(cpu_state *cpu) {
 
     return 0;
 }
+
+void request_interrupt(uint8_t type) {
+    // 1. Read the current Interrupt Flag (IF) register from address 0xFF0F
+    // Note: IF is mapped to 0xFF0F in IO memory
+    uint8_t if_reg = bus_read(0xFF0F);
+    
+    // 2. Set the bit corresponding to the requested interrupt
+    if_reg |= type;
+    
+    // 3. Write the new value back to memory
+    bus_write(0xFF0F, if_reg);
+    
+    // 4. CRITICAL: Wake the CPU from HALT state
+    // If the CPU executed a 'HALT' instruction, it is sleeping until an interrupt occurs.
+    // We must wake it up now, regardless of whether IME (Master Enable) is on or off.
+    if (cpu.halt) {
+        cpu.halt = false;
+    }
+}
