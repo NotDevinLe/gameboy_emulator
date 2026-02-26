@@ -13,9 +13,41 @@ typedef struct {
     uint32_t rom_size;
     uint8_t *rom_data;
     rom_header *header;
+
+    // MBC1 state
+    bool ram_enabled;
+    uint8_t rom_bank_reg;   // 5-bit register (0x01–0x1F)
+    uint8_t ram_bank_reg;   // 2-bit register (0x00–0x03)
+    uint8_t banking_mode;   // 0 = ROM mode, 1 = RAM mode
+
+    // External RAM
+    uint8_t *ram_data;
+    uint32_t ram_size_bytes;
+    uint8_t num_ram_banks;
+    uint16_t num_rom_banks;
 } cart_context;
 
 static cart_context ctx;
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+static bool cart_is_mbc1() {
+    return ctx.header->type >= 0x01 && ctx.header->type <= 0x03;
+}
+
+static uint32_t get_ram_size_bytes(uint8_t ram_size_code) {
+    switch (ram_size_code) {
+        case 0x00: return 0;
+        case 0x01: return 0;       // listed as unused
+        case 0x02: return 8192;    // 8 KB (1 bank)
+        case 0x03: return 32768;   // 32 KB (4 banks)
+        case 0x04: return 131072;  // 128 KB (16 banks)
+        case 0x05: return 65536;   // 64 KB (8 banks)
+        default:   return 0;
+    }
+}
 
 // -----------------------------------------------------------------------------
 // Lookup Tables
@@ -48,7 +80,7 @@ static const char *LIC_CODE[0xA5] = {
     [0x72] = "Broderbund", [0x73] = "sculptured", [0x75] = "sci", [0x78] = "THQ",
     [0x79] = "Accolade", [0x80] = "misawa", [0x83] = "lozc", [0x86] = "Tokuma Shoten Intermedia",
     [0x87] = "Tsukuda Original", [0x91] = "Chunsoft", [0x92] = "Video system", [0x93] = "Ocean/Acclaim",
-    [0x95] = "Varie", [0x96] = "Yonezawa/s’pal", [0x97] = "Kaneko", [0x99] = "Pack in soft",
+    [0x95] = "Varie", [0x96] = "Yonezawa/s'pal", [0x97] = "Kaneko", [0x99] = "Pack in soft",
     [0xA4] = "Konami (Yu-Gi-Oh!)"
 };
 
@@ -73,7 +105,7 @@ const char *cart_type_name() {
 bool cart_load(const char *cart) {
     snprintf(ctx.filename, sizeof(ctx.filename), "%s", cart);
 
-    FILE *fp = fopen(cart, "rb"); // 'rb' for binary is safer
+    FILE *fp = fopen(cart, "rb");
     if (!fp) {
         printf("Failed to open: %s\n", cart);
         return false;
@@ -96,12 +128,32 @@ bool cart_load(const char *cart) {
     printf("\t Title    : %s\n", ctx.header->title);
     printf("\t Type     : %2.2X (%s)\n", ctx.header->type, cart_type_name());
     printf("\t ROM Size : %d KB\n", 32 << ctx.header->rom_size);
-    printf("\t RAM Size : %2.2X (%u bytes)\n", ctx.header->ram_size);
+    printf("\t RAM Size : %2.2X\n", ctx.header->ram_size);
     printf("\t LIC Code : %2.2X (%s)\n", ctx.header->lic_code, cart_lic_name());
     printf("\t ROM Vers : %2.2X\n", ctx.header->version);
 
+    // Compute number of ROM banks (each 16 KB)
+    ctx.num_rom_banks = 2 << ctx.header->rom_size;  // 2, 4, 8, 16, ...
+
+    // Initialize MBC1 state
+    ctx.ram_enabled = false;
+    ctx.rom_bank_reg = 1;   // defaults to bank 1
+    ctx.ram_bank_reg = 0;
+    ctx.banking_mode = 0;
+
+    // Allocate external RAM if the cart supports it
+    ctx.ram_size_bytes = get_ram_size_bytes(ctx.header->ram_size);
+    ctx.num_ram_banks = ctx.ram_size_bytes > 0 ? (ctx.ram_size_bytes / 0x2000) : 0;
+    if (ctx.ram_size_bytes > 0) {
+        ctx.ram_data = (uint8_t *)calloc(ctx.ram_size_bytes, 1);
+        printf("\t RAM      : %u bytes (%u banks) allocated\n",
+               ctx.ram_size_bytes, ctx.num_ram_banks);
+    } else {
+        ctx.ram_data = nullptr;
+    }
+
     uint16_t x = 0;
-    for (uint16_t i=0x0134; i<=0x014C; i++) {
+    for (uint16_t i = 0x0134; i <= 0x014C; i++) {
         x = x - ctx.rom_data[i] - 1;
     }
 
@@ -111,17 +163,118 @@ bool cart_load(const char *cart) {
 }
 
 // -----------------------------------------------------------------------------
-// Read / Write with Banking Support
+// Read / Write — ROM ONLY
 // -----------------------------------------------------------------------------
 
-uint8_t cart_read(uint16_t address) {
-    //for now just ROM ONLY type supported...
-
+static uint8_t rom_only_read(uint16_t address) {
     return ctx.rom_data[address];
 }
 
-void cart_write(uint16_t address, uint8_t value) {
-    //TODO: implement MBC1 bank switching
+static void rom_only_write(uint16_t address, uint8_t value) {
+    // ROM ONLY: writes to ROM area are ignored, no external RAM
     (void)address;
     (void)value;
+}
+
+// -----------------------------------------------------------------------------
+// Read / Write — MBC1
+// -----------------------------------------------------------------------------
+
+static uint8_t mbc1_read(uint16_t address) {
+    // 0x0000-0x3FFF: ROM Bank 0 (or bank N in mode 1)
+    if (address < 0x4000) {
+        uint32_t bank = 0;
+        if (ctx.banking_mode == 1) {
+            // In advanced banking mode, upper bits apply to bank 0 area
+            bank = (ctx.ram_bank_reg << 5) & (ctx.num_rom_banks - 1);
+        }
+        uint32_t rom_addr = bank * 0x4000 + address;
+        return ctx.rom_data[rom_addr % ctx.rom_size];
+    }
+
+    // 0x4000-0x7FFF: ROM Bank N (switchable)
+    if (address < 0x8000) {
+        uint32_t bank = (ctx.ram_bank_reg << 5) | ctx.rom_bank_reg;
+        bank &= (ctx.num_rom_banks - 1);
+        uint32_t rom_addr = bank * 0x4000 + (address - 0x4000);
+        return ctx.rom_data[rom_addr % ctx.rom_size];
+    }
+
+    // 0xA000-0xBFFF: External RAM
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled || !ctx.ram_data) {
+            return 0xFF;
+        }
+        uint32_t ram_bank = 0;
+        if (ctx.banking_mode == 1 && ctx.num_ram_banks > 1) {
+            ram_bank = ctx.ram_bank_reg & (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        return ctx.ram_data[ram_addr % ctx.ram_size_bytes];
+    }
+
+    printf("MBC1: unhandled read at 0x%04X\n", address);
+    return 0xFF;
+}
+
+static void mbc1_write(uint16_t address, uint8_t value) {
+    // 0x0000-0x1FFF: RAM Enable
+    if (address < 0x2000) {
+        ctx.ram_enabled = ((value & 0x0F) == 0x0A);
+        return;
+    }
+
+    // 0x2000-0x3FFF: ROM Bank Number (lower 5 bits)
+    if (address < 0x4000) {
+        ctx.rom_bank_reg = value & 0x1F;
+        if (ctx.rom_bank_reg == 0) {
+            ctx.rom_bank_reg = 1;  // bank 0 maps to bank 1
+        }
+        return;
+    }
+
+    // 0x4000-0x5FFF: RAM Bank Number / Upper Bits of ROM Bank Number
+    if (address < 0x6000) {
+        ctx.ram_bank_reg = value & 0x03;
+        return;
+    }
+
+    // 0x6000-0x7FFF: Banking Mode Select
+    if (address < 0x8000) {
+        ctx.banking_mode = value & 0x01;
+        return;
+    }
+
+    // 0xA000-0xBFFF: External RAM Write
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled || !ctx.ram_data) {
+            return;
+        }
+        uint32_t ram_bank = 0;
+        if (ctx.banking_mode == 1 && ctx.num_ram_banks > 1) {
+            ram_bank = ctx.ram_bank_reg & (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        ctx.ram_data[ram_addr % ctx.ram_size_bytes] = value;
+        return;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Public API (dispatches based on cart type)
+// -----------------------------------------------------------------------------
+
+uint8_t cart_read(uint16_t address) {
+    if (cart_is_mbc1()) {
+        return mbc1_read(address);
+    }
+    return rom_only_read(address);
+}
+
+void cart_write(uint16_t address, uint8_t value) {
+    if (cart_is_mbc1()) {
+        mbc1_write(address, value);
+        return;
+    }
+    rom_only_write(address, value);
 }

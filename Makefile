@@ -1,10 +1,9 @@
 CXX      := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Iinclude
 
-# SDL2 include paths (for macOS Homebrew)
+# SDL2 include/lib paths (for macOS Homebrew)
 UNAME_S := $(shell uname -s 2>/dev/null || echo "Unknown")
 ifeq ($(UNAME_S),Darwin)
-    # Try Homebrew paths first, then fallback to /usr/local
     ifeq ($(shell test -d /opt/homebrew/include/SDL2 && echo "yes"),yes)
         CXXFLAGS += -I/opt/homebrew/include
         LDFLAGS := -L/opt/homebrew/lib
@@ -15,7 +14,7 @@ ifeq ($(UNAME_S),Darwin)
 endif
 
 # SDL2 libraries
-LDFLAGS += -lSDL2 -lSDL2_ttf
+LDFLAGS += -lSDL2
 
 SRC_DIR  := lib
 EMU_DIR  := emulator
@@ -43,4 +42,3 @@ $(TEST_BIN): test_runner.cpp $(filter-out emulator/main.o,$(OBJS))
 
 clean:
 	rm -f $(OBJS) $(BIN) $(TEST_BIN)
-

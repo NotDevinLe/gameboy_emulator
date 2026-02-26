@@ -3,6 +3,7 @@
 #include "cpu.h"
 #include "timer.h"
 #include "emu.h"
+#include "dma.h"
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -23,11 +24,13 @@ void io_init() {
     
     // PPU
     io.lcdc = 0x91; 
+    io.stat = 0x85;  // Mode 1 (VBlank) + LYC=LY flag set initially
     io.ly = 0x00; 
     io.scy = 0x00;
     io.scx = 0x00;
     io.lyc = 0x00;
     io.bgp = 0xFC;
+    io.dma = 0xFF;
     io.obp0 = 0xFF;
     io.obp1 = 0xFF;
     io.wy = 0x00;
@@ -81,9 +84,14 @@ uint8_t io_read(uint16_t addr) {
     else if (addr == 0xFF40) {
         return io.lcdc;
     }
+    else if (addr == 0xFF41) {
+        return io.stat;
+    }
     else if (addr == 0xFF44) {
-        // Hardcode LY to 0x90 to prevent spurious log divergences
-        return 0x90;
+        return io.ly;
+    }
+    else if (addr == 0xFF46) {
+        return io.dma;
     }
     // Sound registers
     else if (addr == 0xFF10) return io.nr10;
@@ -147,8 +155,16 @@ void io_write(uint16_t addr, uint8_t val) {
     else if (addr == 0xFF40) {
         io.lcdc = val;
     }
+    else if (addr == 0xFF41) {
+        // Bits 0-2 are read-only (mode + LYC flag), only bits 3-6 are writable
+        io.stat = (io.stat & 0x07) | (val & 0x78);
+    }
     else if (addr == 0xFF44) {
         return;  // LY is read-only
+    }
+    else if (addr == 0xFF46) {
+        io.dma = val;
+        dma_start(val);
     }
     // Sound registers
     else if (addr == 0xFF10) io.nr10 = val;

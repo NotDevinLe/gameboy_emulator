@@ -19,9 +19,11 @@ typedef struct {
     uint8_t nr50, nr51, nr52;        // Sound control
     
     // PPU registers
+    uint8_t stat;       // LCD Status (0xFF41)
     uint8_t scy, scx;   // Scroll Y, Scroll X
     uint8_t lyc;        // LY Compare
     uint8_t bgp;        // BG Palette
+    uint8_t dma;        // DMA transfer register (0xFF46)
     uint8_t obp0, obp1; // Object Palette 0, 1
     uint8_t wy, wx;     // Window Y, Window X
 
