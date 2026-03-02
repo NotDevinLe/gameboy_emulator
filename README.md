@@ -18,7 +18,7 @@ cart.cpp - loads in a cartridge and gets the ROM data.
 
 For the memory bank controller I only implement mbc1 and rom only since most games only utilize that. Eventually will implement mbc5 for support of pokemon.
 
-Debugging Logs:
+# The brain of the emulator (CPU)
 
 Jan 29 - All functionality for the Blargg's CPU test should be implemented now. However, there are some weird bugs that are causing it to loop infinitely. Created automated logging of opcode and register values and compare against SameBoy implementation to see where instructions diverges. Re-Implementing interrupts as that could be the source of issue as well.
 
@@ -30,4 +30,26 @@ Feb 1 - Wrote my own debugging pipeline that checks registers, flags, and memory
 
 Feb 21 - Finally figured out the issue in the code was for my LD function where I was loading in the memory address of IMM16 into itself instead of from a register. All tests work now and I can work on the PPU after setting up UI.
 
-# PPU
+# Getting Graphics to Display
+
+There are 4 main components for this part.
+
+Firstly, the Object Attribute Memory (OAM) is a 160 byte memory block that can store up to 40 sprites. It stores the (x,y) position of the sprite and flags such as the priority (should it be drawn first or last?) and flip (which direction it faces). 
+
+Secondly, the Direct Memory Access (DMA) is a part of the gameboy that moves data into your OAM. This is necessary because the CPU is really busy and having this concurrent process allows for less workload on it.
+
+Thirdly, the Pixel Processing Unit (PPU) is what turns memory into actual pixels. Before getting into what the PPU is, there are a few useful definitions here. 
+
+Gameboy screen is 160 pixels wide by 144 pixels tall.
+Scanline - Horizontal row of pixels.
+T-cycles/dots - A count for how long each operation takes. Different operations can take different number of cycles (and can even depend on whether it suceeds at the actions such as a jump with a condition)
+
+A full frame consists of 154 scanlines. 144 of them are the actual scanlines where the remainder 10 are basically a rest period for the graphics so that the CPU can update the VRAM which stores graphics information.
+
+4 modes of the PPU:
+    Mode 2 (OAM Scan dots 0-79): Checks which [0,10] sprites in OAM belong on the current scanline.
+    Mode 3 (Draw Pixels dots 80-251): Fetch data from vram and oam to figure out which colors go on screen
+    Mode 0 (H-Blank dots 252-455): PPU finished drawing a row. Move pointer back to left side for next row. 
+    Mode 1 (V-Blank): Lets the PPU rest for 10 scanlines.
+
+Finally, we have the renderer. This is going to be done with SDL2. 

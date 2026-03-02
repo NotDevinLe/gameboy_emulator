@@ -11,6 +11,22 @@
 
 io_context io;
 
+// Joypad button state: 8 bits, one per button (1 = pressed, 0 = released)
+// Bits 0-3: Right, Left, Up, Down  (d-pad)
+// Bits 4-7: A, B, Select, Start    (action)
+static uint8_t joypad_state = 0x00;  // all released
+
+void joypad_press(joypad_btn btn) {
+    joypad_state |= (1 << btn);
+    // Request joypad interrupt (IF bit 4)
+    uint8_t if_reg = io.if_reg;
+    io.if_reg = if_reg | 0x10;
+}
+
+void joypad_release(joypad_btn btn) {
+    joypad_state &= ~(1 << btn);
+}
+
 void io_init() {
     // Joypad
     io.joypad = 0xCF;
@@ -67,7 +83,21 @@ void io_init() {
 
 uint8_t io_read(uint16_t addr) {
     if (addr == 0xFF00) {
-        return io.joypad;
+        // Joypad register (P1/JOYP):
+        //   Bits 7-6: unused, always 1
+        //   Bit 5: 0 = select action buttons (Start/Select/B/A)
+        //   Bit 4: 0 = select d-pad (Down/Up/Left/Right)
+        //   Bits 3-0: button state (0 = pressed, 1 = not pressed)
+        uint8_t result = 0xCF; // all unselected, no buttons
+        if (!(io.joypad & 0x10)) {
+            // D-pad selected: bits 0-3 of joypad_state = Right,Left,Up,Down
+            result = 0xC0 | (io.joypad & 0x30) | (~joypad_state & 0x0F);
+        }
+        if (!(io.joypad & 0x20)) {
+            // Action buttons selected: bits 4-7 of joypad_state = A,B,Select,Start
+            result = 0xC0 | (io.joypad & 0x30) | (~(joypad_state >> 4) & 0x0F);
+        }
+        return result;
     }
     else if (addr == 0xFF01) {
         return io.serial_data[0];
@@ -133,7 +163,8 @@ void io_write(uint16_t addr, uint8_t val) {
         return;
     }
     if (addr == 0xFF00) {
-        io.joypad = val;
+        // Only bits 4-5 are writable (button group selection)
+        io.joypad = (io.joypad & 0xCF) | (val & 0x30);
     }
     else if (addr == 0xFF01) {
         io.serial_data[0] = val;

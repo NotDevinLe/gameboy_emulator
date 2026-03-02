@@ -36,3 +36,17 @@ uint8_t io_read(uint16_t addr);
 void    io_write(uint16_t addr, uint8_t value);
 void io_init();
 
+// Joypad button indices
+enum joypad_btn {
+    BTN_RIGHT  = 0,
+    BTN_LEFT   = 1,
+    BTN_UP     = 2,
+    BTN_DOWN   = 3,
+    BTN_A      = 4,
+    BTN_B      = 5,
+    BTN_SELECT = 6,
+    BTN_START  = 7,
+};
+
+void joypad_press(joypad_btn btn);
+void joypad_release(joypad_btn btn);
