@@ -53,3 +53,5 @@ A full frame consists of 154 scanlines. 144 of them are the actual scanlines whe
     Mode 1 (V-Blank): Lets the PPU rest for 10 scanlines.
 
 Finally, we have the renderer. This is going to be done with SDL2. 
+
+March 2 - I've implemented most of the PPU. I just need to add window rendering (HUD for games). I also need to fix the interrupts and add proper timing.
