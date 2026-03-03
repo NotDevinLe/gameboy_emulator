@@ -37,10 +37,6 @@ typedef struct {
 
 static cart_context ctx;
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
 static bool cart_is_mbc1() {
     return ctx.header->type >= 0x01 && ctx.header->type <= 0x03;
 }
@@ -68,10 +64,6 @@ static uint32_t get_ram_size_bytes(uint8_t ram_size_code) {
         default:   return 0;
     }
 }
-
-// -----------------------------------------------------------------------------
-// Lookup Tables
-// -----------------------------------------------------------------------------
 
 static const char *ROM_TYPES[] = {
     "ROM ONLY", "MBC1", "MBC1+RAM", "MBC1+RAM+BATTERY",
@@ -117,10 +109,6 @@ const char *cart_type_name() {
     }
     return "UNKNOWN";
 }
-
-// -----------------------------------------------------------------------------
-// Cartridge Loading
-// -----------------------------------------------------------------------------
 
 bool cart_load(const char *cart) {
     snprintf(ctx.filename, sizeof(ctx.filename), "%s", cart);
@@ -191,10 +179,6 @@ bool cart_load(const char *cart) {
     return true;
 }
 
-// -----------------------------------------------------------------------------
-// Read / Write — ROM ONLY
-// -----------------------------------------------------------------------------
-
 static uint8_t rom_only_read(uint16_t address) {
     return ctx.rom_data[address];
 }
@@ -203,10 +187,6 @@ static void rom_only_write(uint16_t address, uint8_t value) {
     (void)address;
     (void)value;
 }
-
-// -----------------------------------------------------------------------------
-// Read / Write — MBC1
-// -----------------------------------------------------------------------------
 
 static uint8_t mbc1_read(uint16_t address) {
     if (address < 0x4000) {
@@ -277,10 +257,6 @@ static void mbc1_write(uint16_t address, uint8_t value) {
         return;
     }
 }
-
-// -----------------------------------------------------------------------------
-// Read / Write — MBC3
-// -----------------------------------------------------------------------------
 
 static uint8_t mbc3_read(uint16_t address) {
     // 0x0000-0x3FFF: ROM bank 0 (fixed)
@@ -387,10 +363,6 @@ static void mbc3_write(uint16_t address, uint8_t value) {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Read / Write — MBC5
-// -----------------------------------------------------------------------------
-
 static uint8_t mbc5_read(uint16_t address) {
     // 0x0000-0x3FFF: ROM bank 0 (fixed)
     if (address < 0x4000) {
@@ -462,10 +434,6 @@ static void mbc5_write(uint16_t address, uint8_t value) {
         return;
     }
 }
-
-// -----------------------------------------------------------------------------
-// Public API (dispatches based on cart type)
-// -----------------------------------------------------------------------------
 
 uint8_t cart_read(uint16_t address) {
     if (cart_is_mbc1()) return mbc1_read(address);

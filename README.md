@@ -55,3 +55,7 @@ A full frame consists of 154 scanlines. 144 of them are the actual scanlines whe
 Finally, we have the renderer. This is going to be done with SDL2. 
 
 March 2 - I've implemented most of the PPU. I just need to add window rendering (HUD for games). I also need to fix the interrupts and add proper timing.
+
+I've finally finished the gameboy (or at least the parts I wanted to make). Right now, I have the PPU, but it's not actually accurate. I only render pixels for each scanline without using FIFO pixel queues and a ton of other complex features. The gameboy works as intended and will run games but may have a few visual glitches (that you honestly won't notice most likely) once in a while. 
+
+Finally, there is also a couple of other things that are unimplemented such as a save functionality for games and also the Audio Processing Unit. Saving should be simple as all I would need to do is just store some arrays into memory, but the audio would take too long and is not that rewarding.

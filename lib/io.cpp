@@ -11,14 +11,11 @@
 
 io_context io;
 
-// Joypad button state: 8 bits, one per button (1 = pressed, 0 = released)
-// Bits 0-3: Right, Left, Up, Down  (d-pad)
-// Bits 4-7: A, B, Select, Start    (action)
 static uint8_t joypad_state = 0x00;  // all released
 
 void joypad_press(joypad_btn btn) {
     joypad_state |= (1 << btn);
-    // Request joypad interrupt (IF bit 4)
+
     uint8_t if_reg = io.if_reg;
     io.if_reg = if_reg | 0x10;
 }

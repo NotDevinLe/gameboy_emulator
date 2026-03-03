@@ -15,8 +15,6 @@ uint8_t cpu_handle_interrupts(cpu_state *cpu) {
 
     if (cpu->ime && (ie & if_reg)) {
         
-        // Loop through bits 0-4 (Priority order is 0=Highest)
-        // 0: VBlank, 1: LCD, 2: Timer, 3: Serial, 4: Joypad
         for (int i = 0; i < 5; i++) {
             uint8_t mask = 1 << i;
             
