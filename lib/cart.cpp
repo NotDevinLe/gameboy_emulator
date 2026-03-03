@@ -10,11 +10,23 @@ typedef struct {
     uint8_t *rom_data;
     rom_header *header;
 
-    // MBC1 state
+    // Shared MBC state
     bool ram_enabled;
+    uint8_t ram_bank_reg;   // RAM bank select (2-bit MBC1/MBC3, 4-bit MBC5)
+
+    // MBC1 state
     uint8_t rom_bank_reg;   // 5-bit register (0x01–0x1F)
-    uint8_t ram_bank_reg;   // 2-bit register (0x00–0x03)
     uint8_t banking_mode;   // 0 = ROM mode, 1 = RAM mode
+
+    // MBC3 / MBC5 state
+    uint16_t rom_bank;      // 7-bit for MBC3, 9-bit for MBC5
+
+    // MBC3 RTC
+    bool rtc_mapped;        // true when an RTC register is selected instead of RAM
+    uint8_t rtc_select;     // which RTC register (0x08–0x0C)
+    uint8_t rtc_regs[5];    // S, M, H, DL, DH
+    uint8_t rtc_latched[5]; // latched copies
+    uint8_t rtc_latch_prev; // previous write for 0x00→0x01 edge detection
 
     // External RAM
     uint8_t *ram_data;
@@ -31,6 +43,18 @@ static cart_context ctx;
 
 static bool cart_is_mbc1() {
     return ctx.header->type >= 0x01 && ctx.header->type <= 0x03;
+}
+
+static bool cart_is_mbc3() {
+    return ctx.header->type >= 0x0F && ctx.header->type <= 0x13;
+}
+
+static bool cart_is_mbc5() {
+    return ctx.header->type >= 0x19 && ctx.header->type <= 0x1E;
+}
+
+static bool cart_has_rtc() {
+    return ctx.header->type == 0x0F || ctx.header->type == 0x10;
 }
 
 static uint32_t get_ram_size_bytes(uint8_t ram_size_code) {
@@ -128,16 +152,25 @@ bool cart_load(const char *cart) {
     printf("\t LIC Code : %2.2X (%s)\n", ctx.header->lic_code, cart_lic_name());
     printf("\t ROM Vers : %2.2X\n", ctx.header->version);
 
-    // Compute number of ROM banks (each 16 KB)
-    ctx.num_rom_banks = 2 << ctx.header->rom_size;  // 2, 4, 8, 16, ...
+    ctx.num_rom_banks = 2 << ctx.header->rom_size;
 
-    // Initialize MBC1 state
+    // Common defaults
     ctx.ram_enabled = false;
-    ctx.rom_bank_reg = 1;   // defaults to bank 1
     ctx.ram_bank_reg = 0;
+
+    // MBC1
+    ctx.rom_bank_reg = 1;
     ctx.banking_mode = 0;
 
-    // Allocate external RAM if the cart supports it
+    // MBC3 / MBC5
+    ctx.rom_bank = 1;
+    ctx.rtc_mapped = false;
+    ctx.rtc_select = 0;
+    memset(ctx.rtc_regs, 0, sizeof(ctx.rtc_regs));
+    memset(ctx.rtc_latched, 0, sizeof(ctx.rtc_latched));
+    ctx.rtc_latch_prev = 0xFF;
+
+    // Allocate external RAM
     ctx.ram_size_bytes = get_ram_size_bytes(ctx.header->ram_size);
     ctx.num_ram_banks = ctx.ram_size_bytes > 0 ? (ctx.ram_size_bytes / 0x2000) : 0;
     if (ctx.ram_size_bytes > 0) {
@@ -167,7 +200,6 @@ static uint8_t rom_only_read(uint16_t address) {
 }
 
 static void rom_only_write(uint16_t address, uint8_t value) {
-    // ROM ONLY: writes to ROM area are ignored, no external RAM
     (void)address;
     (void)value;
 }
@@ -177,18 +209,15 @@ static void rom_only_write(uint16_t address, uint8_t value) {
 // -----------------------------------------------------------------------------
 
 static uint8_t mbc1_read(uint16_t address) {
-    // 0x0000-0x3FFF: ROM Bank 0 (or bank N in mode 1)
     if (address < 0x4000) {
         uint32_t bank = 0;
         if (ctx.banking_mode == 1) {
-            // In advanced banking mode, upper bits apply to bank 0 area
             bank = (ctx.ram_bank_reg << 5) & (ctx.num_rom_banks - 1);
         }
         uint32_t rom_addr = bank * 0x4000 + address;
         return ctx.rom_data[rom_addr % ctx.rom_size];
     }
 
-    // 0x4000-0x7FFF: ROM Bank N (switchable)
     if (address < 0x8000) {
         uint32_t bank = (ctx.ram_bank_reg << 5) | ctx.rom_bank_reg;
         bank &= (ctx.num_rom_banks - 1);
@@ -196,7 +225,6 @@ static uint8_t mbc1_read(uint16_t address) {
         return ctx.rom_data[rom_addr % ctx.rom_size];
     }
 
-    // 0xA000-0xBFFF: External RAM
     if (address >= 0xA000 && address < 0xC000) {
         if (!ctx.ram_enabled || !ctx.ram_data) {
             return 0xFF;
@@ -209,39 +237,33 @@ static uint8_t mbc1_read(uint16_t address) {
         return ctx.ram_data[ram_addr % ctx.ram_size_bytes];
     }
 
-    printf("MBC1: unhandled read at 0x%04X\n", address);
     return 0xFF;
 }
 
 static void mbc1_write(uint16_t address, uint8_t value) {
-    // 0x0000-0x1FFF: RAM Enable
     if (address < 0x2000) {
         ctx.ram_enabled = ((value & 0x0F) == 0x0A);
         return;
     }
 
-    // 0x2000-0x3FFF: ROM Bank Number (lower 5 bits)
     if (address < 0x4000) {
         ctx.rom_bank_reg = value & 0x1F;
         if (ctx.rom_bank_reg == 0) {
-            ctx.rom_bank_reg = 1;  // bank 0 maps to bank 1
+            ctx.rom_bank_reg = 1;
         }
         return;
     }
 
-    // 0x4000-0x5FFF: RAM Bank Number / Upper Bits of ROM Bank Number
     if (address < 0x6000) {
         ctx.ram_bank_reg = value & 0x03;
         return;
     }
 
-    // 0x6000-0x7FFF: Banking Mode Select
     if (address < 0x8000) {
         ctx.banking_mode = value & 0x01;
         return;
     }
 
-    // 0xA000-0xBFFF: External RAM Write
     if (address >= 0xA000 && address < 0xC000) {
         if (!ctx.ram_enabled || !ctx.ram_data) {
             return;
@@ -257,20 +279,204 @@ static void mbc1_write(uint16_t address, uint8_t value) {
 }
 
 // -----------------------------------------------------------------------------
+// Read / Write — MBC3
+// -----------------------------------------------------------------------------
+
+static uint8_t mbc3_read(uint16_t address) {
+    // 0x0000-0x3FFF: ROM bank 0 (fixed)
+    if (address < 0x4000) {
+        return ctx.rom_data[address];
+    }
+
+    // 0x4000-0x7FFF: switchable ROM bank 1-127
+    if (address < 0x8000) {
+        uint32_t bank = ctx.rom_bank & (ctx.num_rom_banks - 1);
+        uint32_t rom_addr = bank * 0x4000 + (address - 0x4000);
+        return ctx.rom_data[rom_addr % ctx.rom_size];
+    }
+
+    // 0xA000-0xBFFF: external RAM or RTC register
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled) {
+            return 0xFF;
+        }
+
+        if (ctx.rtc_mapped && cart_has_rtc()) {
+            uint8_t idx = ctx.rtc_select - 0x08;
+            if (idx < 5) {
+                return ctx.rtc_latched[idx];
+            }
+            return 0xFF;
+        }
+
+        if (!ctx.ram_data) {
+            return 0xFF;
+        }
+        uint32_t ram_bank = ctx.ram_bank_reg;
+        if (ctx.num_ram_banks > 0) {
+            ram_bank &= (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        return ctx.ram_data[ram_addr % ctx.ram_size_bytes];
+    }
+
+    return 0xFF;
+}
+
+static void mbc3_write(uint16_t address, uint8_t value) {
+    // 0x0000-0x1FFF: RAM & Timer enable
+    if (address < 0x2000) {
+        ctx.ram_enabled = ((value & 0x0F) == 0x0A);
+        return;
+    }
+
+    // 0x2000-0x3FFF: ROM bank number (7 bits, 0 maps to 1)
+    if (address < 0x4000) {
+        ctx.rom_bank = value & 0x7F;
+        if (ctx.rom_bank == 0) {
+            ctx.rom_bank = 1;
+        }
+        return;
+    }
+
+    // 0x4000-0x5FFF: RAM bank or RTC register select
+    if (address < 0x6000) {
+        if (value <= 0x03) {
+            ctx.ram_bank_reg = value;
+            ctx.rtc_mapped = false;
+        } else if (value >= 0x08 && value <= 0x0C) {
+            ctx.rtc_select = value;
+            ctx.rtc_mapped = true;
+        }
+        return;
+    }
+
+    // 0x6000-0x7FFF: latch clock data (write 0x00 then 0x01)
+    if (address < 0x8000) {
+        if (ctx.rtc_latch_prev == 0x00 && value == 0x01) {
+            memcpy(ctx.rtc_latched, ctx.rtc_regs, sizeof(ctx.rtc_regs));
+        }
+        ctx.rtc_latch_prev = value;
+        return;
+    }
+
+    // 0xA000-0xBFFF: external RAM or RTC register write
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled) {
+            return;
+        }
+
+        if (ctx.rtc_mapped && cart_has_rtc()) {
+            uint8_t idx = ctx.rtc_select - 0x08;
+            if (idx < 5) {
+                ctx.rtc_regs[idx] = value;
+            }
+            return;
+        }
+
+        if (!ctx.ram_data) {
+            return;
+        }
+        uint32_t ram_bank = ctx.ram_bank_reg;
+        if (ctx.num_ram_banks > 0) {
+            ram_bank &= (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        ctx.ram_data[ram_addr % ctx.ram_size_bytes] = value;
+        return;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Read / Write — MBC5
+// -----------------------------------------------------------------------------
+
+static uint8_t mbc5_read(uint16_t address) {
+    // 0x0000-0x3FFF: ROM bank 0 (fixed)
+    if (address < 0x4000) {
+        return ctx.rom_data[address];
+    }
+
+    // 0x4000-0x7FFF: switchable ROM bank 0-511
+    if (address < 0x8000) {
+        uint32_t bank = ctx.rom_bank;
+        if (ctx.num_rom_banks > 0) {
+            bank &= (ctx.num_rom_banks - 1);
+        }
+        uint32_t rom_addr = bank * 0x4000 + (address - 0x4000);
+        return ctx.rom_data[rom_addr % ctx.rom_size];
+    }
+
+    // 0xA000-0xBFFF: external RAM
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled || !ctx.ram_data) {
+            return 0xFF;
+        }
+        uint32_t ram_bank = ctx.ram_bank_reg;
+        if (ctx.num_ram_banks > 0) {
+            ram_bank &= (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        return ctx.ram_data[ram_addr % ctx.ram_size_bytes];
+    }
+
+    return 0xFF;
+}
+
+static void mbc5_write(uint16_t address, uint8_t value) {
+    // 0x0000-0x1FFF: RAM enable
+    if (address < 0x2000) {
+        ctx.ram_enabled = ((value & 0x0F) == 0x0A);
+        return;
+    }
+
+    // 0x2000-0x2FFF: low 8 bits of ROM bank
+    if (address < 0x3000) {
+        ctx.rom_bank = (ctx.rom_bank & 0x100) | value;
+        return;
+    }
+
+    // 0x3000-0x3FFF: bit 8 of ROM bank
+    if (address < 0x4000) {
+        ctx.rom_bank = (ctx.rom_bank & 0xFF) | ((value & 0x01) << 8);
+        return;
+    }
+
+    // 0x4000-0x5FFF: RAM bank (0x00-0x0F)
+    if (address < 0x6000) {
+        ctx.ram_bank_reg = value & 0x0F;
+        return;
+    }
+
+    // 0xA000-0xBFFF: external RAM write
+    if (address >= 0xA000 && address < 0xC000) {
+        if (!ctx.ram_enabled || !ctx.ram_data) {
+            return;
+        }
+        uint32_t ram_bank = ctx.ram_bank_reg;
+        if (ctx.num_ram_banks > 0) {
+            ram_bank &= (ctx.num_ram_banks - 1);
+        }
+        uint32_t ram_addr = ram_bank * 0x2000 + (address - 0xA000);
+        ctx.ram_data[ram_addr % ctx.ram_size_bytes] = value;
+        return;
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Public API (dispatches based on cart type)
 // -----------------------------------------------------------------------------
 
 uint8_t cart_read(uint16_t address) {
-    if (cart_is_mbc1()) {
-        return mbc1_read(address);
-    }
+    if (cart_is_mbc1()) return mbc1_read(address);
+    if (cart_is_mbc3()) return mbc3_read(address);
+    if (cart_is_mbc5()) return mbc5_read(address);
     return rom_only_read(address);
 }
 
 void cart_write(uint16_t address, uint8_t value) {
-    if (cart_is_mbc1()) {
-        mbc1_write(address, value);
-        return;
-    }
+    if (cart_is_mbc1()) { mbc1_write(address, value); return; }
+    if (cart_is_mbc3()) { mbc3_write(address, value); return; }
+    if (cart_is_mbc5()) { mbc5_write(address, value); return; }
     rom_only_write(address, value);
 }
